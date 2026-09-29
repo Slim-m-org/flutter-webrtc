@@ -25,6 +25,8 @@ class FlutterScreenCapture : public MediaListObserver,
   void GetDesktopSources(const EncodableList& types,
                          std::unique_ptr<MethodResultProxy> result);
 
+  void ResetDesktopSources(std::unique_ptr<MethodResultProxy> result);
+
   void UpdateDesktopSources(const EncodableList& types,
                             std::unique_ptr<MethodResultProxy> result);
 
