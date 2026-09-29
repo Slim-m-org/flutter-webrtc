@@ -77,6 +77,17 @@ void FlutterScreenCapture::GetDesktopSources(
   result->Success(EncodableValue(map));
 }
 
+void FlutterScreenCapture::ResetDesktopSources(
+    std::unique_ptr<MethodResultProxy> result) {
+  // Dropping the cached lists makes the next enumeration open a fresh
+  // capture session (on Linux/Wayland, a new xdg-desktop-portal prompt).
+  medialist_.clear();
+  sources_.clear();
+  auto map = EncodableMap();
+  map[EncodableValue("result")] = true;
+  result->Success(EncodableValue(map));
+}
+
 void FlutterScreenCapture::UpdateDesktopSources(
     const EncodableList& types,
     std::unique_ptr<MethodResultProxy> result) {

@@ -90,6 +90,8 @@ void FlutterWebRTC::HandleMethodCall(
       return;
     }
     GetDesktopSources(types, std::move(result));
+  } else if (method_call.method_name().compare("resetDesktopSources") == 0) {
+    ResetDesktopSources(std::move(result));
   } else if (method_call.method_name().compare("updateDesktopSources") == 0) {
     // types: ["screen", "window"]
     if (!method_call.arguments()) {
