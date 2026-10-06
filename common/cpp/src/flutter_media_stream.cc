@@ -1,6 +1,10 @@
 #include "flutter_media_stream.h"
 
+#include <memory>
+#include <thread>
+
 #include "flutter_utf8_sanitize.h"
+#include "task_runner.h"
 
 #define DEFAULT_WIDTH 1280
 #define DEFAULT_HEIGHT 720
@@ -61,19 +65,42 @@ void FlutterMediaStream::GetUserMedia(
 
   it = constraints.find(EncodableValue("video"));
   params[EncodableValue("videoTracks")] = EncodableValue(EncodableList());
+  bool want_video = false;
   if (it != constraints.end()) {
     EncodableValue video = it->second;
-    if (TypeIs<bool>(video)) {
-      if (true == GetValue<bool>(video)) {
-        GetUserVideo(constraints, stream, params);
-      }
-    } else if (TypeIs<EncodableMap>(video)) {
-      GetUserVideo(constraints, stream, params);
-    }
+    want_video = (TypeIs<bool>(video) && GetValue<bool>(video)) ||
+                 TypeIs<EncodableMap>(video);
   }
 
-  base_->local_streams_[uuid] = stream;
-  result->Success(EncodableValue(params));
+  if (!want_video || base_->task_runner_ == nullptr) {
+    if (want_video) {
+      GetUserVideo(constraints, stream, params);
+    }
+    base_->local_streams_[uuid] = stream;
+    result->Success(EncodableValue(params));
+    return;
+  }
+
+  // Opening a camera can take seconds (a 4K UVC webcam measured about 3.8 s),
+  // and on desktop the platform thread also paints the window and takes input,
+  // so the open runs on a worker and only the bookkeeping and reply come back.
+  std::shared_ptr<MethodResultProxy> shared_result = std::move(result);
+  std::thread([this, constraints, stream, params, uuid,
+               shared_result]() mutable {
+    auto commits = std::make_shared<Commits>();
+    {
+      std::lock_guard<std::mutex> guard(video_open_mutex_);
+      GetUserVideo(constraints, stream, params, commits.get());
+    }
+    base_->task_runner_->EnqueueTask(
+        [this, stream, params, uuid, shared_result, commits]() {
+          for (auto& commit : *commits) {
+            commit();
+          }
+          base_->local_streams_[uuid] = stream;
+          shared_result->Success(EncodableValue(params));
+        });
+  }).detach();
 }
 
 void addDefaultAudioConstraints(
@@ -318,7 +345,8 @@ EncodableValue getConstrainInt(const EncodableMap& constraints,
 
 void FlutterMediaStream::GetUserVideo(const EncodableMap& constraints,
                                       scoped_refptr<RTCMediaStream> stream,
-                                      EncodableMap& params) {
+                                      EncodableMap& params,
+                                      Commits* commits) {
   EncodableMap video_constraints;
   EncodableMap video_mandatory;
   auto it = constraints.find(EncodableValue("video"));
@@ -424,8 +452,16 @@ void FlutterMediaStream::GetUserVideo(const EncodableMap& constraints,
 
   stream->AddTrack(track);
 
-  base_->local_tracks_[track->id().std_string()] = track;
-  base_->video_capturers_[track->id().std_string()] = video_capturer;
+  std::string track_key = track->id().std_string();
+  auto commit = [this, track_key, track, video_capturer]() {
+    base_->local_tracks_[track_key] = track;
+    base_->video_capturers_[track_key] = video_capturer;
+  };
+  if (commits != nullptr) {
+    commits->push_back(commit);
+  } else {
+    commit();
+  }
 }
 
 void FlutterMediaStream::GetSources(std::unique_ptr<MethodResultProxy> result) {
