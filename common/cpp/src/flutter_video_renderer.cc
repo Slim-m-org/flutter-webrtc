@@ -1,5 +1,8 @@
 #include "flutter_video_renderer.h"
 
+#include <algorithm>
+#include <utility>
+
 namespace flutter_webrtc_plugin {
 
 FlutterVideoRenderer::~FlutterVideoRenderer() {}
@@ -18,23 +21,56 @@ void FlutterVideoRenderer::initialize(
   event_channel_ = EventChannelProxy::Create(messenger, task_runner, channel_name);
 }
 
+namespace {
+
+// The engine asks for the texture's drawn size, which on desktop is in logical
+// pixels; twice that stays sharp at a 2x display scale.
+constexpr double kDisplayHeadroom = 2.0;
+
+// The size to convert a frame_width x frame_height frame to for a texture
+// drawn at requested_width x requested_height. Only a half or a quarter of the
+// frame, the ratios libyuv scales on a fast path: an arbitrary ratio measured
+// slower than converting the whole frame. The full frame when the drawn size
+// is unknown or needs it.
+std::pair<int, int> ConversionSize(int frame_width,
+                                   int frame_height,
+                                   size_t requested_width,
+                                   size_t requested_height) {
+  if (requested_width == 0 || requested_height == 0) {
+    return {frame_width, frame_height};
+  }
+  double needed_width = kDisplayHeadroom * requested_width;
+  double needed_height = kDisplayHeadroom * requested_height;
+  for (int divisor : {4, 2}) {
+    if (frame_width / divisor >= needed_width &&
+        frame_height / divisor >= needed_height) {
+      return {frame_width / divisor, frame_height / divisor};
+    }
+  }
+  return {frame_width, frame_height};
+}
+
+}  // namespace
+
 const FlutterDesktopPixelBuffer* FlutterVideoRenderer::CopyPixelBuffer(
     size_t width,
     size_t height) const {
   mutex_.lock();
   if (pixel_buffer_.get() && frame_.get()) {
-    if (pixel_buffer_->width != frame_->width() ||
-        pixel_buffer_->height != frame_->height()) {
-      size_t buffer_size =
-          (size_t(frame_->width()) * size_t(frame_->height())) * (32 >> 3);
+    // Converting the whole frame on the raster thread is what made a small
+    // tile of a high-resolution stream lag, so convert at the drawn size.
+    auto [out_width, out_height] =
+        ConversionSize(frame_->width(), frame_->height(), width, height);
+    size_t buffer_size = size_t(out_width) * size_t(out_height) * (32 >> 3);
+    if (buffer_size > rgb_capacity_) {
       rgb_buffer_.reset(new uint8_t[buffer_size]);
-      pixel_buffer_->width = frame_->width();
-      pixel_buffer_->height = frame_->height();
+      rgb_capacity_ = buffer_size;
     }
+    pixel_buffer_->width = out_width;
+    pixel_buffer_->height = out_height;
 
     frame_->ConvertToARGB(RTCVideoFrame::Type::kABGR, rgb_buffer_.get(), 0,
-                          static_cast<int>(pixel_buffer_->width),
-                          static_cast<int>(pixel_buffer_->height));
+                          out_width, out_height);
 
     pixel_buffer_->buffer = rgb_buffer_.get();
     mutex_.unlock();
@@ -52,8 +88,8 @@ void FlutterVideoRenderer::OnFrame(scoped_refptr<RTCVideoFrame> frame) {
     event_channel_->Success(EncodableValue(params));
     // Created once and never replaced: CopyPixelBuffer hands the engine a raw
     // pointer to it from the raster thread, so swapping it here after a track
-    // switch freed a buffer the engine could still be reading. Its own size
-    // check already reallocates the pixels when the frame size changes.
+    // switch freed a buffer the engine could still be reading. It sizes the
+    // pixels itself on every call.
     mutex_.lock();
     if (!pixel_buffer_) {
       pixel_buffer_ = std::make_shared<FlutterDesktopPixelBuffer>();
