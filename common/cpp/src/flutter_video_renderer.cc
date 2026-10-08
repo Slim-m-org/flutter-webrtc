@@ -50,9 +50,17 @@ void FlutterVideoRenderer::OnFrame(scoped_refptr<RTCVideoFrame> frame) {
     params[EncodableValue("event")] = "didFirstFrameRendered";
     params[EncodableValue("id")] = EncodableValue(texture_id_);
     event_channel_->Success(EncodableValue(params));
-    pixel_buffer_.reset(new FlutterDesktopPixelBuffer());
-    pixel_buffer_->width = 0;
-    pixel_buffer_->height = 0;
+    // Created once and never replaced: CopyPixelBuffer hands the engine a raw
+    // pointer to it from the raster thread, so swapping it here after a track
+    // switch freed a buffer the engine could still be reading. Its own size
+    // check already reallocates the pixels when the frame size changes.
+    mutex_.lock();
+    if (!pixel_buffer_) {
+      pixel_buffer_ = std::make_shared<FlutterDesktopPixelBuffer>();
+      pixel_buffer_->width = 0;
+      pixel_buffer_->height = 0;
+    }
+    mutex_.unlock();
     first_frame_rendered = true;
   }
   if (rotation_ != frame->rotation()) {
