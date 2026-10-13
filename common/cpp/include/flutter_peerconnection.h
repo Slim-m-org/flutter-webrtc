@@ -1,6 +1,8 @@
 #ifndef FLUTTER_WEBRTC_RTC_PEER_CONNECTION_HXX
 #define FLUTTER_WEBRTC_RTC_PEER_CONNECTION_HXX
 
+#include <mutex>
+
 #include "flutter_common.h"
 #include "flutter_webrtc_base.h"
 
@@ -47,6 +49,7 @@ class FlutterPeerConnectionObserver : public RTCPeerConnectionObserver {
   // resolve receiver tracks. Entries are dropped in OnRemoveTrack and, at the
   // latest, when this observer is destroyed with the peer connection.
   std::map<std::string, scoped_refptr<RTCMediaTrack>> remote_tracks_;
+  std::mutex remote_tracks_mutex_;
   FlutterWebRTCBase* base_;
   std::string id_;
 };
