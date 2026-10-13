@@ -1,3 +1,5 @@
+#include <thread>
+
 #include "flutter_peerconnection.h"
 
 #include "base/scoped_ref_ptr.h"
@@ -1031,13 +1033,13 @@ EncodableMap statsToMap(const scoped_refptr<MediaRTCStats>& stats) {
   return report_map;
 }
 
-void FlutterPeerConnection::GetStats(
-    const std::string& track_id,
-    RTCPeerConnection* pc,
-    std::unique_ptr<MethodResultProxy> result) {
-  std::shared_ptr<MethodResultProxy> result_ptr(result.release());
-  scoped_refptr<RTCMediaTrack> track = base_->MediaTracksForId(track_id);
-  if (track != nullptr && track_id != "") {
+// Runs off the platform thread: every call here marshals onto the signaling
+// thread and waits, and that thread can sit behind a camera open for seconds.
+static void CollectStats(scoped_refptr<RTCPeerConnection> pc,
+                         const std::string& track_id,
+                         bool has_track,
+                         std::shared_ptr<MethodResultProxy> result_ptr) {
+  if (has_track) {
     bool found = false;
     auto receivers = pc->receivers();
     for (auto receiver : receivers.std_vector()) {
@@ -1099,6 +1101,20 @@ void FlutterPeerConnection::GetStats(
           result_ptr->Error("GetStats", error);
         });
   }
+}
+
+void FlutterPeerConnection::GetStats(
+    const std::string& track_id,
+    RTCPeerConnection* pc,
+    std::unique_ptr<MethodResultProxy> result) {
+  std::shared_ptr<MethodResultProxy> result_ptr(result.release());
+  // The track maps belong to the platform thread, so the lookup stays here.
+  const bool has_track =
+      track_id != "" && base_->MediaTracksForId(track_id) != nullptr;
+  scoped_refptr<RTCPeerConnection> pc_ref(pc);
+  std::thread([pc_ref, track_id, has_track, result_ptr]() {
+    CollectStats(pc_ref, track_id, has_track, result_ptr);
+  }).detach();
 }
 
 void FlutterPeerConnection::MediaStreamAddTrack(
@@ -1322,6 +1338,10 @@ void FlutterPeerConnectionObserver::OnAddTrack(
 void FlutterPeerConnectionObserver::OnTrack(
     scoped_refptr<RTCRtpTransceiver> transceiver) {
   auto receiver = transceiver->receiver();
+  if (auto track = receiver->track()) {
+    std::lock_guard<std::mutex> guard(remote_tracks_mutex_);
+    remote_tracks_[track->id().std_string()] = track;
+  }
   EncodableMap params;
   EncodableList streams_info;
   auto streams = receiver->streams();
@@ -1343,6 +1363,10 @@ void FlutterPeerConnectionObserver::OnTrack(
 void FlutterPeerConnectionObserver::OnRemoveTrack(
     scoped_refptr<RTCRtpReceiver> receiver) {
   auto track = receiver->track();
+  {
+    std::lock_guard<std::mutex> guard(remote_tracks_mutex_);
+    remote_tracks_.erase(track->id().std_string());
+  }
 
   EncodableMap params;
   params[EncodableValue("event")] = "onRemoveTrack";
@@ -1417,6 +1441,13 @@ scoped_refptr<RTCMediaStream> FlutterPeerConnectionObserver::MediaStreamForId(
 
 scoped_refptr<RTCMediaTrack> FlutterPeerConnectionObserver::MediaTrackForId(
     const std::string& id) {
+  {
+    std::lock_guard<std::mutex> guard(remote_tracks_mutex_);
+    auto found = remote_tracks_.find(id);
+    if (found != remote_tracks_.end()) {
+      return found->second;
+    }
+  }
   for (auto it = remote_streams_.begin(); it != remote_streams_.end(); it++) {
     auto remoteStream = (*it).second;
     auto audio_tracks = remoteStream->audio_tracks();

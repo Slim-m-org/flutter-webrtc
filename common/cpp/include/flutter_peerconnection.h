@@ -1,6 +1,8 @@
 #ifndef FLUTTER_WEBRTC_RTC_PEER_CONNECTION_HXX
 #define FLUTTER_WEBRTC_RTC_PEER_CONNECTION_HXX
 
+#include <mutex>
+
 #include "flutter_common.h"
 #include "flutter_webrtc_base.h"
 
@@ -42,6 +44,11 @@ class FlutterPeerConnectionObserver : public RTCPeerConnectionObserver {
   std::unique_ptr<EventChannelProxy> event_channel_;
   scoped_refptr<RTCPeerConnection> peerconnection_;
   std::map<std::string, scoped_refptr<RTCMediaStream>> remote_streams_;
+  // Unified Plan delivers remote tracks through OnTrack, on the signaling
+  // thread, often with no stream; kept here so MediaTrackForId (setVolume)
+  // finds them without a blocking receivers() call from the platform thread.
+  std::map<std::string, scoped_refptr<RTCMediaTrack>> remote_tracks_;
+  std::mutex remote_tracks_mutex_;
   FlutterWebRTCBase* base_;
   std::string id_;
 };
