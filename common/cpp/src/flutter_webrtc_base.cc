@@ -1,7 +1,7 @@
 #include "flutter_webrtc_base.h"
 
 #include "flutter_data_channel.h"
-#include "flutter_input_gate.h"
+#include "flutter_capture_chain.h"
 #ifdef _WIN32
 #include "default_audio_endpoint.h"
 #endif
@@ -33,7 +33,7 @@ FlutterWebRTCBase::FlutterWebRTCBase(BinaryMessenger* messenger,
   }
   audio_processing_ = factory_->GetAudioProcessing();
   if (audio_processing_) {
-    audio_processing_->SetCapturePostProcessing(InputGate::Instance());
+    audio_processing_->SetCapturePostProcessing(CaptureChain::Instance());
   }
   event_channel_ = EventChannelProxy::Create(messenger_, task_runner_, kEventChannelName);
 }
