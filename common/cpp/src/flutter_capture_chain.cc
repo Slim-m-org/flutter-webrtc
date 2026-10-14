@@ -1,6 +1,7 @@
 #include "flutter_capture_chain.h"
 
 #include "flutter_input_gate.h"
+#include "flutter_noise_suppressor.h"
 #include "flutter_voice_dynamics.h"
 
 namespace flutter_webrtc_plugin {
@@ -16,6 +17,7 @@ void CaptureChain::Initialize(int sample_rate_hz, int num_channels) {
 
 void CaptureChain::Process(int num_bands, int num_frames, int buffer_size,
                            float* buffer) {
+  NoiseSuppressor::Instance()->Process(buffer, num_frames);
   InputGate::Instance()->Process(num_bands, num_frames, buffer_size, buffer);
   VoiceDynamics::Instance()->Process(buffer, num_frames);
 }
