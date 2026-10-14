@@ -8,6 +8,7 @@ endif()
 
 # Add the libwebrtc dependency
 include("${CMAKE_CURRENT_SOURCE_DIR}/../third_party/CMakeLists.txt")
+include("${CMAKE_CURRENT_SOURCE_DIR}/../third_party/rnnoise/CMakeLists.txt")
 
 set(PLUGIN_NAME "${PROJECT_NAME}_plugin")
 set (CMAKE_EXPORT_COMPILE_COMMANDS ON )
@@ -21,6 +22,7 @@ add_library(${PLUGIN_NAME} SHARED
   "../common/cpp/src/flutter_frame_cryptor.cc"
   "../common/cpp/src/flutter_capture_chain.cc"
   "../common/cpp/src/flutter_input_gate.cc"
+  "../common/cpp/src/flutter_noise_suppressor.cc"
   "../common/cpp/src/flutter_voice_dynamics.cc"
   "../common/cpp/src/flutter_media_stream.cc"
   "../common/cpp/src/flutter_utf8_sanitize.cc"
@@ -58,6 +60,7 @@ target_include_directories(${PLUGIN_NAME} INTERFACE
   "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/libwebrtc/include"
 )
 target_link_libraries(${PLUGIN_NAME} PRIVATE flutter)
+target_link_libraries(${PLUGIN_NAME} PRIVATE slimm_rnnoise)
 target_link_libraries(${PLUGIN_NAME} PRIVATE PkgConfig::GTK)
 
 # GCC 14+ (and notably GCC 16) tightened transitive header inclusion, so the

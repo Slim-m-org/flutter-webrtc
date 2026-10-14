@@ -8,6 +8,7 @@ endif()
 
 # Add the libwebrtc dependency
 include("${CMAKE_CURRENT_SOURCE_DIR}/../third_party/CMakeLists.txt")
+include("${CMAKE_CURRENT_SOURCE_DIR}/../third_party/rnnoise/CMakeLists.txt")
 
 # This value is used when generating builds using this plugin, so it must
 # not be changed
@@ -23,6 +24,7 @@ add_library(${PLUGIN_NAME} SHARED
   "../common/cpp/src/flutter_frame_cryptor.cc"
   "../common/cpp/src/flutter_capture_chain.cc"
   "../common/cpp/src/flutter_input_gate.cc"
+  "../common/cpp/src/flutter_noise_suppressor.cc"
   "../common/cpp/src/flutter_voice_dynamics.cc"
   "../common/cpp/src/flutter_media_stream.cc"
   "../common/cpp/src/flutter_utf8_sanitize.cc"
@@ -58,6 +60,7 @@ target_include_directories(${PLUGIN_NAME} INTERFACE
 target_link_libraries(${PLUGIN_NAME} PRIVATE 
   flutter
   flutter_wrapper_plugin
+  slimm_rnnoise
   "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/libwebrtc/lib/libwebrtc.dll.lib"
   avrt.lib
   ksuser.lib
