@@ -18,9 +18,12 @@ target_include_directories(slimm_rnnoise
   PUBLIC "${RNNOISE_DIR}/include"
   PRIVATE "${RNNOISE_DIR}/src"
 )
+# C11 for `restrict` and `inline`, which MSVC's default C mode rejects.
 set_target_properties(slimm_rnnoise PROPERTIES
   POSITION_INDEPENDENT_CODE ON
   C_VISIBILITY_PRESET hidden
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
 )
 if(MSVC)
   target_compile_options(slimm_rnnoise PRIVATE /W0 /O2)
