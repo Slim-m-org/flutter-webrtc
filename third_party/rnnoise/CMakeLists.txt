@@ -26,10 +26,10 @@ set_target_properties(slimm_rnnoise PROPERTIES
   C_STANDARD_REQUIRED ON
 )
 if(MSVC)
-  target_compile_options(slimm_rnnoise PRIVATE /W0 /O2)
+  target_compile_options(slimm_rnnoise PRIVATE /W0)
   target_compile_definitions(slimm_rnnoise PRIVATE _USE_MATH_DEFINES)
 else()
-  target_compile_options(slimm_rnnoise PRIVATE -w -O2)
+  target_compile_options(slimm_rnnoise PRIVATE -w)
   find_library(RNNOISE_LIBM m)
   if(RNNOISE_LIBM)
     target_link_libraries(slimm_rnnoise PRIVATE ${RNNOISE_LIBM})
