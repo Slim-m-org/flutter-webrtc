@@ -50,9 +50,9 @@ void InputGate::Process(int /*num_bands*/, int num_frames, int /*buffer_size*/,
   const float rms =
       static_cast<float>(std::sqrt(sum / static_cast<double>(num_frames)));
   const float frame_db =
-      std::max(kFloorDb, 20.0f * std::log10(rms / kFullScale + 1e-9f));
-  const float metered = std::max(frame_db, level_db_.load() - kMeterDecayDb);
-  level_db_.store(std::max(kFloorDb, metered));
+      (std::max)(kFloorDb, 20.0f * std::log10(rms / kFullScale + 1e-9f));
+  const float metered = (std::max)(frame_db, level_db_.load() - kMeterDecayDb);
+  level_db_.store((std::max)(kFloorDb, metered));
 
   bool voice = true;
   if (frame_db >= threshold_db_.load()) {
@@ -75,8 +75,8 @@ void InputGate::Process(int /*num_bands*/, int num_frames, int /*buffer_size*/,
       static_cast<float>(num_frames) / static_cast<float>(kFrameMs);
   const float step = 1.0f / (ramp_ms * samples_per_ms);
   for (int i = 0; i < num_frames; ++i) {
-    gain_ = want_open ? std::min(1.0f, gain_ + step)
-                      : std::max(0.0f, gain_ - step);
+    gain_ = want_open ? (std::min)(1.0f, gain_ + step)
+                      : (std::max)(0.0f, gain_ - step);
     buffer[i] *= gain_;
   }
 }
