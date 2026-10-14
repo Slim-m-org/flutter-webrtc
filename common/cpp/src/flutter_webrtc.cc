@@ -1,6 +1,7 @@
 #include "flutter_webrtc.h"
 #include "flutter_data_channel.h"
 #include "flutter_input_gate.h"
+#include "flutter_voice_dynamics.h"
 
 #include "flutter_webrtc/flutter_web_r_t_c_plugin.h"
 
@@ -548,6 +549,7 @@ void FlutterWebRTC::HandleMethodCall(
     InputGate::Instance()->Configure(
         findBoolean(params, "enabled"),
         static_cast<float>(threshold.value_or(-50.0)));
+    VoiceDynamics::Instance()->Configure(findBoolean(params, "dynamics"));
     result->Success();
   } else if (method_call.method_name().compare("getInputGate") == 0) {
     InputGate* gate = InputGate::Instance();
@@ -555,6 +557,8 @@ void FlutterWebRTC::HandleMethodCall(
     map[EncodableValue("levelDb")] =
         EncodableValue(static_cast<double>(gate->LevelDb()));
     map[EncodableValue("voice")] = EncodableValue(gate->VoiceDetected());
+    map[EncodableValue("dynamics")] =
+        EncodableValue(VoiceDynamics::Instance()->Enabled());
     result->Success(EncodableValue(map));
   } else if (method_call.method_name().compare("setVolume") == 0) {
     auto args = method_call.arguments();

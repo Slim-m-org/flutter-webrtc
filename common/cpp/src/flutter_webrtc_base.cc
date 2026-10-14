@@ -1,7 +1,7 @@
 #include "flutter_webrtc_base.h"
 
 #include "flutter_data_channel.h"
-#include "flutter_input_gate.h"
+#include "flutter_capture_chain.h"
 #ifdef _WIN32
 #include "default_audio_endpoint.h"
 #endif
@@ -97,7 +97,7 @@ void FlutterWebRTCBase::EnsureWebRTCInitialized(bool enable_warp,
   }
   audio_processing_ = factory_->GetAudioProcessing();
   if (audio_processing_) {
-    audio_processing_->SetCapturePostProcessing(InputGate::Instance());
+    audio_processing_->SetCapturePostProcessing(CaptureChain::Instance());
   }
 
   audio_device_->OnDeviceChange([&] {
