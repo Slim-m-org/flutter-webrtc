@@ -260,11 +260,14 @@ void FlutterMediaStream::GetUserAudio(const EncodableMap& constraints,
     }
 
     if (sourceId == "") {
-      base_->audio_device_->RecordingDeviceName(0, strRecordingName,
+      // On Windows index 0 is only the first device listed, not the default.
+      const int found = base_->DefaultAudioDeviceIndex(true);
+      const uint16_t index = found >= 0 ? static_cast<uint16_t>(found) : 0;
+      base_->audio_device_->RecordingDeviceName(index, strRecordingName,
                                                 strRecordingGuid);
       sourceId = SanitizeDeviceIdFromAudioBuffers(strRecordingName,
                                                   strRecordingGuid);
-      base_->audio_device_->SetRecordingDevice(0);
+      base_->audio_device_->SetRecordingDevice(index);
     }
 
     char strPlayoutName[256];
@@ -277,6 +280,12 @@ void FlutterMediaStream::GetUserAudio(const EncodableMap& constraints,
               SanitizeDeviceIdFromAudioBuffers(strPlayoutName,
                                                strPlayoutGuid)) {
         base_->audio_device_->SetPlayoutDevice(i);
+      }
+    }
+    if (deviceId == "") {
+      const int found = base_->DefaultAudioDeviceIndex(false);
+      if (found >= 0) {
+        base_->audio_device_->SetPlayoutDevice(static_cast<uint16_t>(found));
       }
     }
 

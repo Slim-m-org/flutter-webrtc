@@ -1,5 +1,6 @@
 #include "flutter_webrtc.h"
 #include "flutter_data_channel.h"
+#include "flutter_input_gate.h"
 
 #include "flutter_webrtc/flutter_web_r_t_c_plugin.h"
 
@@ -523,6 +524,26 @@ void FlutterWebRTC::HandleMethodCall(
         GetValue<EncodableMap>(*method_call.arguments());
     const std::string track_id = findString(params, "trackId");
     MediaStreamTrackSwitchCamera(track_id, std::move(result));
+  } else if (method_call.method_name().compare("setInputGate") == 0) {
+    if (!method_call.arguments()) {
+      result->Error("Bad Arguments", "setInputGate() Null arguments received");
+      return;
+    }
+    const EncodableMap params =
+        GetValue<EncodableMap>(*method_call.arguments());
+    const std::optional<double> threshold =
+        maybeFindDouble(params, "thresholdDb");
+    InputGate::Instance()->Configure(
+        findBoolean(params, "enabled"),
+        static_cast<float>(threshold.value_or(-50.0)));
+    result->Success();
+  } else if (method_call.method_name().compare("getInputGate") == 0) {
+    InputGate* gate = InputGate::Instance();
+    EncodableMap map;
+    map[EncodableValue("levelDb")] =
+        EncodableValue(static_cast<double>(gate->LevelDb()));
+    map[EncodableValue("voice")] = EncodableValue(gate->VoiceDetected());
+    result->Success(EncodableValue(map));
   } else if (method_call.method_name().compare("setVolume") == 0) {
     auto args = method_call.arguments();
     if (!args) {

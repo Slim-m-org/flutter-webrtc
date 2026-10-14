@@ -1,6 +1,10 @@
 #include "flutter_webrtc_base.h"
 
 #include "flutter_data_channel.h"
+#include "flutter_input_gate.h"
+#ifdef _WIN32
+#include "default_audio_endpoint.h"
+#endif
 #include "flutter_peerconnection.h"
 
 #include "helper.h"
@@ -19,7 +23,18 @@ FlutterWebRTCBase::FlutterWebRTCBase(BinaryMessenger* messenger,
   audio_device_ = factory_->GetAudioDevice();
   video_device_ = factory_->GetVideoDevice();
   desktop_device_ = factory_->GetDesktopDevice();
+  const int playout = DefaultAudioDeviceIndex(false);
+  if (playout >= 0) {
+    audio_device_->SetPlayoutDevice(static_cast<uint16_t>(playout));
+  }
+  const int recording = DefaultAudioDeviceIndex(true);
+  if (recording >= 0) {
+    audio_device_->SetRecordingDevice(static_cast<uint16_t>(recording));
+  }
   audio_processing_ = factory_->GetAudioProcessing();
+  if (audio_processing_) {
+    audio_processing_->SetCapturePostProcessing(InputGate::Instance());
+  }
   event_channel_ = EventChannelProxy::Create(messenger_, task_runner_, kEventChannelName);
 }
 
@@ -29,6 +44,28 @@ FlutterWebRTCBase::~FlutterWebRTCBase() {
 
 EventChannelProxy* FlutterWebRTCBase::event_channel() {
   return event_channel_ ? event_channel_.get() : nullptr;
+}
+
+int FlutterWebRTCBase::DefaultAudioDeviceIndex(bool capture) {
+#ifdef _WIN32
+  if (!audio_device_) return -1;
+  const std::string id = DefaultConsoleEndpointId(capture);
+  if (id.empty()) return -1;
+  char name[256];
+  char guid[256];
+  const int16_t count = capture ? audio_device_->RecordingDevices()
+                                : audio_device_->PlayoutDevices();
+  for (int16_t i = 0; i < count; i++) {
+    const uint16_t index = static_cast<uint16_t>(i);
+    const int32_t got =
+        capture ? audio_device_->RecordingDeviceName(index, name, guid)
+                : audio_device_->PlayoutDeviceName(index, name, guid);
+    if (got == 0 && id == guid) return i;
+  }
+#else
+  (void)capture;
+#endif
+  return -1;
 }
 
 std::string FlutterWebRTCBase::GenerateUUID() {
