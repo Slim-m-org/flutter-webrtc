@@ -28,6 +28,10 @@ set_target_properties(slimm_rnnoise PROPERTIES
 if(MSVC)
   target_compile_options(slimm_rnnoise PRIVATE /W0)
   target_compile_definitions(slimm_rnnoise PRIVATE _USE_MATH_DEFINES)
+  # MSVC never defines __SSE2__, though every x64 target has it; without it vec.h takes the slower generic path.
+  if(CMAKE_SIZEOF_VOID_P EQUAL 8 AND NOT CMAKE_SYSTEM_PROCESSOR MATCHES "ARM64|arm64|aarch64")
+    target_compile_definitions(slimm_rnnoise PRIVATE __SSE2__)
+  endif()
 else()
   target_compile_options(slimm_rnnoise PRIVATE -w)
   find_library(RNNOISE_LIBM m)
