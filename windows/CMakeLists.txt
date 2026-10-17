@@ -36,6 +36,7 @@ add_library(${PLUGIN_NAME} SHARED
   "../common/cpp/src/flutter_webrtc.cc"
   "../common/cpp/src/flutter_webrtc_base.cc"
   "application_loopback_capturer.cc"
+  "audio_ducking_opt_out.cc"
   "default_audio_endpoint.cc"
   "loopback_capturer_factory.cc"
   "flutter_webrtc_plugin.cc"

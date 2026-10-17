@@ -3,6 +3,7 @@
 #include <memory>
 #include <thread>
 
+#include "audio_ducking_opt_out.h"
 #include "flutter_utf8_sanitize.h"
 #include "task_runner.h"
 
@@ -36,6 +37,7 @@ std::string SanitizeDeviceIdFromVideoBuffers(const char* name, const char* guid)
 
 FlutterMediaStream::FlutterMediaStream(FlutterWebRTCBase* base) : base_(base) {
   base_->audio_device_->OnDeviceChange([&] {
+    OptOutOfAudioDucking();
     EncodableMap info;
     info[EncodableValue("event")] = "onDeviceChange";
     base_->event_channel()->Success(EncodableValue(info), false);
@@ -288,6 +290,8 @@ void FlutterMediaStream::GetUserAudio(const EncodableMap& constraints,
         base_->audio_device_->SetPlayoutDevice(static_cast<uint16_t>(found));
       }
     }
+
+    OptOutOfAudioDucking();
 
     scoped_refptr<RTCAudioSource> source = base_->factory_->CreateAudioSource(
         "audio_input", RTCAudioSource::SourceType::kMicrophone, audio_options);
@@ -548,6 +552,7 @@ void FlutterMediaStream::SelectAudioOutput(
                   "Not found device id: " + SanitizeUtf8ForFlutter(device_id));
     return;
   }
+  OptOutOfAudioDucking();
   result->Success();
 }
 
@@ -573,6 +578,7 @@ void FlutterMediaStream::SelectAudioInput(
                   "Not found device id: " + SanitizeUtf8ForFlutter(device_id));
     return;
   }
+  OptOutOfAudioDucking();
   result->Success();
 }
 
