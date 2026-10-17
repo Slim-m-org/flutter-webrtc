@@ -46,6 +46,22 @@ That happens when no endpoint is active at startup, or the enumerator fails.
 The module then stays on the communications role until the app selects a device by id.
 A fallback to a console endpoint is not possible from the plugin, since the module offers no console-role call other than `kDefaultDevice` through the enum overload, which `RTCAudioDevice` does not expose.
 
+## Ducking opt-out
+
+On top of avoiding the communications role, the plugin opts out of the system ducking experience (`windows/audio_ducking_opt_out.cc`).
+It calls `IAudioSessionControl2::SetDuckingPreference(TRUE)` on the process default session (null session GUID) of every active render and capture endpoint.
+Sessions belong to an endpoint, so the call is made once per endpoint and repeated for the whole list.
+Microsoft recommends setting the preference during stream creation and allows changing it later, so it is applied at plugin start, in `getUserMedia` before the audio source is created, when an input or output is selected, and on every device change (which covers a newly plugged headset).
+The controls are kept alive because the default session only exists while something references it, and the module opens its stream afterwards.
+Every failure is logged with `OutputDebugString` and ignored.
+
+Limits:
+
+- It relies on the prebuilt module creating its streams in the default session, as audited above. If that module ever used a named session GUID, this opt-out would stop covering it.
+- Windows may still apply the communications stream experience if the module opens the `eCommunications` role (open issue 3), but the opt-out also covers that endpoint.
+- It affects only this process. It does not change the user's Windows "reduce by 80%" setting.
+- A caller thread that is already in a single threaded apartment gets its own apartment, so the held controls then live and die with that thread.
+
 ## Capture and render roles
 
 | Direction | Role used | Where |

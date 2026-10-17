@@ -3,6 +3,7 @@
 #include <memory>
 #include <thread>
 
+#include "audio_ducking_opt_out.h"
 #include "flutter_utf8_sanitize.h"
 #include "task_runner.h"
 
@@ -284,6 +285,8 @@ void FlutterMediaStream::GetUserAudio(const EncodableMap& constraints,
       }
     }
 
+    OptOutOfAudioDucking();
+
     scoped_refptr<RTCAudioSource> source = base_->factory_->CreateAudioSource(
         "audio_input", RTCAudioSource::SourceType::kMicrophone, audio_options);
     std::string uuid = base_->GenerateUUID();
@@ -543,6 +546,7 @@ void FlutterMediaStream::SelectAudioOutput(
                   "Not found device id: " + SanitizeUtf8ForFlutter(device_id));
     return;
   }
+  OptOutOfAudioDucking();
   result->Success();
 }
 
@@ -568,6 +572,7 @@ void FlutterMediaStream::SelectAudioInput(
                   "Not found device id: " + SanitizeUtf8ForFlutter(device_id));
     return;
   }
+  OptOutOfAudioDucking();
   result->Success();
 }
 

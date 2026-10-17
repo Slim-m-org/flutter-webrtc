@@ -2,6 +2,7 @@
 
 #include "flutter_data_channel.h"
 #include "flutter_capture_chain.h"
+#include "audio_ducking_opt_out.h"
 #ifdef _WIN32
 #include "default_audio_endpoint.h"
 #endif
@@ -95,12 +96,14 @@ void FlutterWebRTCBase::EnsureWebRTCInitialized(bool enable_warp,
   if (recording >= 0) {
     audio_device_->SetRecordingDevice(static_cast<uint16_t>(recording));
   }
+  OptOutOfAudioDucking();
   audio_processing_ = factory_->GetAudioProcessing();
   if (audio_processing_) {
     audio_processing_->SetCapturePostProcessing(CaptureChain::Instance());
   }
 
   audio_device_->OnDeviceChange([&] {
+    OptOutOfAudioDucking();
     EncodableMap info;
     info[EncodableValue("event")] = "onDeviceChange";
     event_channel()->Success(EncodableValue(info), false);
