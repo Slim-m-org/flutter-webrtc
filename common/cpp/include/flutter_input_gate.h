@@ -32,6 +32,12 @@ class InputGate : public libwebrtc::RTCAudioProcessing::CustomProcessing {
   void Reset(int new_rate) override;
   void Release() override {}
 
+  // Process with rnnoise's speech probability for the frame, so keyboard
+  // clicks and other loud non-speech can not open the gate. Pass a negative
+  // probability when there is none, which behaves like plain Process.
+  void ProcessWithSpeech(int num_frames, float* buffer,
+                         float speech_probability);
+
  private:
   InputGate() = default;
 
@@ -42,6 +48,7 @@ class InputGate : public libwebrtc::RTCAudioProcessing::CustomProcessing {
 
   // Only touched on the audio thread.
   int hold_frames_left_ = 0;
+  int loud_run_frames_ = 0;
   float gain_ = 1.0f;
 };
 
