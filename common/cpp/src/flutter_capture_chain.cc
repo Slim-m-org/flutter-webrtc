@@ -15,10 +15,12 @@ void CaptureChain::Initialize(int sample_rate_hz, int num_channels) {
   InputGate::Instance()->Initialize(sample_rate_hz, num_channels);
 }
 
-void CaptureChain::Process(int num_bands, int num_frames, int buffer_size,
+void CaptureChain::Process(int /*num_bands*/, int num_frames,
+                           int /*buffer_size*/,
                            float* buffer) {
-  NoiseSuppressor::Instance()->Process(buffer, num_frames);
-  InputGate::Instance()->Process(num_bands, num_frames, buffer_size, buffer);
+  const float speech =
+      NoiseSuppressor::Instance()->Process(buffer, num_frames);
+  InputGate::Instance()->ProcessWithSpeech(num_frames, buffer, speech);
   VoiceDynamics::Instance()->Process(buffer, num_frames);
 }
 
