@@ -25,6 +25,7 @@ add_library(${PLUGIN_NAME} SHARED
   "../common/cpp/src/flutter_capture_chain.cc"
   "../common/cpp/src/flutter_input_gate.cc"
   "../common/cpp/src/flutter_noise_suppressor.cc"
+  "../common/cpp/src/flutter_rate_converter.cc"
   "../common/cpp/src/flutter_voice_dynamics.cc"
   "../common/cpp/src/flutter_media_stream.cc"
   "../common/cpp/src/flutter_utf8_sanitize.cc"

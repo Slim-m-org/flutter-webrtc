@@ -9,37 +9,105 @@ namespace flutter_webrtc_plugin {
 namespace {
 
 // rnnoise's fixed frame: 10ms at 48 kHz.
+constexpr int kRnnoiseRate = 48000;
 constexpr int kFrameSize = 480;
+// 480 kHz worth of samples is already far past any real capture device.
+constexpr int kMaxFrames = 4800;
 
 }  // namespace
+
+struct NoiseSuppressor::Channel {
+  ~Channel() {
+    if (state != nullptr) rnnoise_destroy(state);
+  }
+
+  DenoiseState* state = nullptr;
+  RateConverter up;
+  RateConverter down;
+  float in48[kFrameSize];
+  float out48[kFrameSize];
+};
 
 NoiseSuppressor* NoiseSuppressor::Instance() {
   static NoiseSuppressor* suppressor = new NoiseSuppressor();
   return suppressor;
 }
 
-void NoiseSuppressor::Process(float* buffer, int num_frames) {
-  const bool run =
-      enabled_.load() && buffer != nullptr && num_frames == kFrameSize;
-  active_.store(run);
-  if (!run) {
-    was_active_ = false;
-    return;
-  }
-  if (state_ == nullptr) {
-    state_ = rnnoise_create(nullptr);
-    if (state_ == nullptr) {
-      active_.store(false);
-      return;
+NoiseSuppressor::NoiseSuppressor() = default;
+NoiseSuppressor::~NoiseSuppressor() = default;
+
+// Allocates only when the capture rate or channel count changes.
+bool NoiseSuppressor::Prepare(int num_channels, int num_frames) {
+  const int rate_hz = num_frames * 100;
+  for (int c = 0; c < num_channels; ++c) {
+    Channel* channel = channels_[c].get();
+    if (channel != nullptr && rate_hz == rate_hz_ && channel->state != nullptr) {
+      continue;
     }
-  } else if (!was_active_) {
-    rnnoise_init(state_, nullptr);
+    if (channel == nullptr) {
+      channels_[c] = std::make_unique<Channel>();
+      channel = channels_[c].get();
+    }
+    if (channel->state == nullptr) channel->state = rnnoise_create(nullptr);
+    if (channel->state == nullptr) return false;
+    if (rate_hz != kRnnoiseRate &&
+        (!channel->up.Configure(rate_hz, kRnnoiseRate) ||
+         !channel->down.Configure(kRnnoiseRate, rate_hz))) {
+      return false;
+    }
+  }
+  rate_hz_ = rate_hz;
+  return true;
+}
+
+float NoiseSuppressor::ProcessChannel(Channel& channel, float* buffer,
+                                      int num_frames) {
+  float probability;
+  if (num_frames == kFrameSize) {
+    std::copy(buffer, buffer + kFrameSize, channel.in48);
+    probability = rnnoise_process_frame(channel.state, buffer, channel.in48);
+  } else {
+    channel.up.Convert(buffer, channel.in48);
+    probability =
+        rnnoise_process_frame(channel.state, channel.out48, channel.in48);
+    channel.down.Convert(channel.out48, buffer);
+  }
+  return probability;
+}
+
+float NoiseSuppressor::ProcessPlanar(float* const* channels, int num_channels,
+                                     int num_frames) {
+  const bool run = enabled_.load() && channels != nullptr &&
+                   num_channels >= 1 && num_channels <= kMaxChannels &&
+                   num_frames >= 1 && num_frames <= kMaxFrames;
+  bool ready = run && Prepare(num_channels, num_frames);
+  for (int c = 0; ready && c < num_channels; ++c) {
+    ready = channels[c] != nullptr;
+  }
+  active_.store(ready);
+  if (!ready) {
+    was_active_ = false;
+    return kNoSpeechProbability;
+  }
+  if (!was_active_) {
+    for (int c = 0; c < num_channels; ++c) {
+      rnnoise_init(channels_[c]->state, nullptr);
+      channels_[c]->up.Reset();
+      channels_[c]->down.Reset();
+    }
   }
   was_active_ = true;
 
-  float input[kFrameSize];
-  std::copy(buffer, buffer + kFrameSize, input);
-  rnnoise_process_frame(state_, buffer, input);
+  float best = 0.0f;
+  for (int c = 0; c < num_channels; ++c) {
+    best = std::max(best,
+                    ProcessChannel(*channels_[c], channels[c], num_frames));
+  }
+  return best;
+}
+
+float NoiseSuppressor::Process(float* buffer, int num_frames) {
+  return ProcessPlanar(&buffer, 1, num_frames);
 }
 
 }  // namespace flutter_webrtc_plugin
