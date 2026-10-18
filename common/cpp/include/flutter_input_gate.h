@@ -22,7 +22,8 @@ class InputGate : public libwebrtc::RTCAudioProcessing::CustomProcessing {
   // The loudest frame level in dBFS since the last call, from -100 (silence)
   // to 0: the same per-frame level the threshold is compared with, so a
   // meter drawn from it crosses the threshold exactly when the gate counts a
-  // frame as loud enough.
+  // frame as loud enough. Single consumer: only InputGateMonitor polls it,
+  // a second caller would steal peaks from the meter.
   float TakePeakDb() { return peak_db_.exchange(-100.0f); }
 
   // Whether the level crossed the threshold within the hold time. Tracked

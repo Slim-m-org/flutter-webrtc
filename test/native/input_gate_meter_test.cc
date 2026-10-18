@@ -1,3 +1,6 @@
+#ifndef _USE_MATH_DEFINES
+#define _USE_MATH_DEFINES
+#endif
 #include <cmath>
 #include <vector>
 
@@ -46,8 +49,19 @@ TEST(meter_does_not_linger_over_the_threshold_after_a_click) {
   gate.TakePeakDb();
   Feed(gate, -20.0f);
   CHECK(gate.TakePeakDb() > kThresholdDb);
-  for (int i = 0; i < 5; ++i) Feed(gate, -80.0f);
+  for (int i = 0; i < 40; ++i) Feed(gate, -80.0f);
   CHECK(gate.TakePeakDb() < kThresholdDb);
+}
+
+TEST(meter_forgets_a_loud_frame_when_a_new_session_starts) {
+  InputGate& gate = *InputGate::Instance();
+  gate.Initialize(48000, 1);
+  Feed(gate, -20.0f);
+  gate.Initialize(48000, 1);
+  CHECK(gate.TakePeakDb() <= -100.0f);
+  Feed(gate, -20.0f);
+  gate.Reset(48000);
+  CHECK(gate.TakePeakDb() <= -100.0f);
 }
 
 TEST(meter_is_floored_when_nothing_was_processed) {

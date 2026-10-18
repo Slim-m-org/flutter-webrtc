@@ -43,11 +43,13 @@ void InputGate::Configure(bool enabled, float threshold_db) {
 void InputGate::Initialize(int /*sample_rate_hz*/, int /*num_channels*/) {
   hold_frames_left_ = 0;
   loud_run_frames_ = 0;
+  peak_db_.store(kFloorDb);
 }
 
 void InputGate::Reset(int /*new_rate*/) {
   hold_frames_left_ = 0;
   loud_run_frames_ = 0;
+  peak_db_.store(kFloorDb);
 }
 
 void InputGate::Process(int /*num_bands*/, int num_frames, int /*buffer_size*/,
