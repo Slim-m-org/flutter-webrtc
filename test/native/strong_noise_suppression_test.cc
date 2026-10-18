@@ -51,7 +51,7 @@ void* operator new(size_t size) {
 void operator delete(void* p) noexcept { std::free(p); }
 void operator delete(void* p, size_t) noexcept { std::free(p); }
 
-constexpr int kRates[] = {8000, 16000, 32000, 44100, 48000};
+constexpr int kRates[] = {8000, 16000, 24000, 32000, 44100, 48000, 96000};
 
 TEST(rate_converter_round_trip_keeps_level_and_adds_little_delay) {
   for (int rate : kRates) {

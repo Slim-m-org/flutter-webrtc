@@ -24,8 +24,6 @@ constexpr int kLowSpeechHoldFrames = 100 / kFrameMs;
 // Gain ramps, so opening and closing never click.
 constexpr float kOpenRampMs = 5.0f;
 constexpr float kCloseRampMs = 60.0f;
-// How fast the meter falls back, in dB per frame; it rises instantly.
-constexpr float kMeterDecayDb = 1.5f;
 constexpr float kFloorDb = -100.0f;
 // The float samples are on the int16 scale.
 constexpr float kFullScale = 32768.0f;
@@ -69,8 +67,9 @@ void InputGate::ProcessWithSpeech(int num_frames, float* buffer,
       static_cast<float>(std::sqrt(sum / static_cast<double>(num_frames)));
   const float frame_db =
       (std::max)(kFloorDb, 20.0f * std::log10(rms / kFullScale + 1e-9f));
-  const float metered = (std::max)(frame_db, level_db_.load() - kMeterDecayDb);
-  level_db_.store((std::max)(kFloorDb, metered));
+  float peak = peak_db_.load();
+  while (frame_db > peak && !peak_db_.compare_exchange_weak(peak, frame_db)) {
+  }
 
   const float threshold_db = threshold_db_.load();
   const bool over = frame_db >= threshold_db;

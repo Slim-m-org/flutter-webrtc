@@ -8,6 +8,7 @@ include("${ROOT}/third_party/rnnoise/CMakeLists.txt")
 add_executable(native_tests
   strong_noise_suppression_test.cc
   input_gate_vad_test.cc
+  input_gate_meter_test.cc
   main.cc
   "${ROOT}/common/cpp/src/flutter_noise_suppressor.cc"
   "${ROOT}/common/cpp/src/flutter_rate_converter.cc"
