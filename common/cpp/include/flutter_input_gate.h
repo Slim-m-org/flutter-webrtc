@@ -9,8 +9,8 @@ namespace flutter_webrtc_plugin {
 
 // A noise gate on the microphone, after echo cancellation and noise
 // suppression: frames quieter than the threshold go out as silence. It also
-// meters the capture level, so the app can show it and light the local
-// speaking indicator without waiting for the SFU.
+// meters the level of the frames it decides on, so the app can show it and
+// light the local speaking indicator without waiting for the SFU.
 class InputGate : public libwebrtc::RTCAudioProcessing::CustomProcessing {
  public:
   // One per process: the audio processing module keeps a raw pointer to it
@@ -19,8 +19,11 @@ class InputGate : public libwebrtc::RTCAudioProcessing::CustomProcessing {
 
   void Configure(bool enabled, float threshold_db);
 
-  // The metered level in dBFS, from -100 (silence) to 0.
-  float LevelDb() const { return level_db_.load(); }
+  // The loudest frame level in dBFS since the last call, from -100 (silence)
+  // to 0: the same per-frame level the threshold is compared with, so a
+  // meter drawn from it crosses the threshold exactly when the gate counts a
+  // frame as loud enough.
+  float TakePeakDb() { return peak_db_.exchange(-100.0f); }
 
   // Whether the level crossed the threshold within the hold time. Tracked
   // while the gate is disabled too, for the local speaking indicator.
@@ -43,7 +46,7 @@ class InputGate : public libwebrtc::RTCAudioProcessing::CustomProcessing {
 
   std::atomic<bool> enabled_{false};
   std::atomic<float> threshold_db_{-50.0f};
-  std::atomic<float> level_db_{-100.0f};
+  std::atomic<float> peak_db_{-100.0f};
   std::atomic<bool> voice_{false};
 
   // Only touched on the audio thread.

@@ -546,7 +546,7 @@ void FlutterWebRTC::HandleMethodCall(
     InputGate* gate = InputGate::Instance();
     EncodableMap map;
     map[EncodableValue("levelDb")] =
-        EncodableValue(static_cast<double>(gate->LevelDb()));
+        EncodableValue(static_cast<double>(gate->TakePeakDb()));
     map[EncodableValue("voice")] = EncodableValue(gate->VoiceDetected());
     map[EncodableValue("dynamics")] =
         EncodableValue(VoiceDynamics::Instance()->Enabled());
