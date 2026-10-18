@@ -49,7 +49,8 @@ TEST(meter_does_not_linger_over_the_threshold_after_a_click) {
   gate.TakePeakDb();
   Feed(gate, -20.0f);
   CHECK(gate.TakePeakDb() > kThresholdDb);
-  for (int i = 0; i < 40; ++i) Feed(gate, -80.0f);
+  // 12 frames is inside the old decay's reach: 1.5 dB each keeps -20 above -50.
+  for (int i = 0; i < 12; ++i) Feed(gate, -80.0f);
   CHECK(gate.TakePeakDb() < kThresholdDb);
 }
 
