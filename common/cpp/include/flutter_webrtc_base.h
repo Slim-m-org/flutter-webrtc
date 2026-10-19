@@ -58,7 +58,7 @@ class FlutterWebRTCBase {
   std::string GenerateUUID();
 
   // Windows: the index of the default console device, which callers select
-  // when nothing was chosen; see DefaultConsoleEndpointId. -1 elsewhere, or
+  // when nothing was chosen; see DefaultCallEndpointId. -1 elsewhere, or
   // when it cannot be found.
   int DefaultAudioDeviceIndex(bool capture);
 

@@ -19,7 +19,7 @@ std::string ToUtf8(const wchar_t* wide) {
 
 }  // namespace
 
-std::string DefaultConsoleEndpointId(bool capture) {
+std::string DefaultCallEndpointId(bool capture) {
   const HRESULT init = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
   const bool must_uninit = SUCCEEDED(init);
   std::string id;
@@ -29,7 +29,8 @@ std::string DefaultConsoleEndpointId(bool capture) {
                                  reinterpret_cast<void**>(&enumerator)))) {
     IMMDevice* device = nullptr;
     if (SUCCEEDED(enumerator->GetDefaultAudioEndpoint(
-            capture ? eCapture : eRender, eConsole, &device))) {
+            capture ? eCapture : eRender, capture ? eCommunications : eConsole,
+            &device))) {
       LPWSTR wide_id = nullptr;
       if (SUCCEEDED(device->GetId(&wide_id)) && wide_id != nullptr) {
         id = ToUtf8(wide_id);
