@@ -2,13 +2,15 @@
 #define FLUTTER_WEBRTC_PLUGIN_FLUTTER_INPUT_GATE_H_
 
 #include <atomic>
+#include <vector>
 
 #include "rtc_audio_processing.h"
 
 namespace flutter_webrtc_plugin {
 
 // A noise gate on the microphone, after echo cancellation and noise
-// suppression: frames quieter than the threshold go out as silence. It also
+// suppression: frames quieter than the threshold go out as silence. The audio
+// leaves two frames late so the gate opens before a word starts. It also
 // meters the level of the frames it decides on, so the app can show it and
 // light the local speaking indicator without waiting for the SFU.
 class InputGate : public libwebrtc::RTCAudioProcessing::CustomProcessing {
@@ -45,6 +47,10 @@ class InputGate : public libwebrtc::RTCAudioProcessing::CustomProcessing {
  private:
   InputGate() = default;
 
+  void ResetState();
+  // Swaps the frame with the audio from kLookaheadFrames frames ago.
+  void Delay(int num_frames, float* buffer);
+
   std::atomic<bool> enabled_{false};
   std::atomic<float> threshold_db_{-50.0f};
   std::atomic<float> peak_db_{-100.0f};
@@ -53,7 +59,10 @@ class InputGate : public libwebrtc::RTCAudioProcessing::CustomProcessing {
   // Only touched on the audio thread.
   int hold_frames_left_ = 0;
   int loud_run_frames_ = 0;
+  unsigned recent_voice_ = 0;
   float gain_ = 1.0f;
+  std::vector<float> delay_;
+  size_t delay_pos_ = 0;
 };
 
 }  // namespace flutter_webrtc_plugin

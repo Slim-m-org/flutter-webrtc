@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
 namespace flutter_webrtc_plugin {
 
@@ -19,6 +20,12 @@ constexpr int kHoldFrames = 300 / kFrameMs;
 constexpr float kSpeechOpen = 0.6f;
 constexpr float kSpeechLow = 0.3f;
 constexpr float kLoudMarginDb = 15.0f;
+// Once open, the gate keeps counting frames this far under the threshold as
+// voice, so a word fading out does not flutter the gate at the threshold.
+constexpr float kCloseHysteresisDb = 5.0f;
+// The audio is delayed by this many frames, so the gate is already open when
+// the frame that opened it arrives and a soft word start is not clipped.
+constexpr int kLookaheadFrames = 2;
 constexpr int kLoudConfirmFrames = 2;
 constexpr int kLowSpeechHoldFrames = 100 / kFrameMs;
 // Gain ramps, so opening and closing never click.
@@ -41,15 +48,31 @@ void InputGate::Configure(bool enabled, float threshold_db) {
 }
 
 void InputGate::Initialize(int /*sample_rate_hz*/, int /*num_channels*/) {
+  ResetState();
+}
+
+void InputGate::Reset(int /*new_rate*/) { ResetState(); }
+
+void InputGate::ResetState() {
   hold_frames_left_ = 0;
   loud_run_frames_ = 0;
+  recent_voice_ = 0;
+  gain_ = enabled_.load() ? 0.0f : 1.0f;
+  delay_.clear();
+  delay_pos_ = 0;
   peak_db_.store(kFloorDb);
 }
 
-void InputGate::Reset(int /*new_rate*/) {
-  hold_frames_left_ = 0;
-  loud_run_frames_ = 0;
-  peak_db_.store(kFloorDb);
+void InputGate::Delay(int num_frames, float* buffer) {
+  const size_t size = static_cast<size_t>(num_frames) * kLookaheadFrames;
+  if (delay_.size() != size) {
+    delay_.assign(size, 0.0f);
+    delay_pos_ = 0;
+  }
+  for (int i = 0; i < num_frames; ++i) {
+    std::swap(buffer[i], delay_[delay_pos_]);
+    if (++delay_pos_ == size) delay_pos_ = 0;
+  }
 }
 
 void InputGate::Process(int /*num_bands*/, int num_frames, int /*buffer_size*/,
@@ -74,7 +97,10 @@ void InputGate::ProcessWithSpeech(int num_frames, float* buffer,
   }
 
   const float threshold_db = threshold_db_.load();
-  const bool over = frame_db >= threshold_db;
+  const bool was_open = hold_frames_left_ > 0;
+  const bool over_open = frame_db >= threshold_db;
+  const bool over =
+      was_open ? frame_db >= threshold_db - kCloseHysteresisDb : over_open;
   bool voice = true;
   if (speech_probability < 0.0f) {
     if (over) {
@@ -86,7 +112,7 @@ void InputGate::ProcessWithSpeech(int num_frames, float* buffer,
     }
   } else {
     const bool speech = over && speech_probability > kSpeechOpen;
-    const bool loud = over && frame_db >= threshold_db + kLoudMarginDb;
+    const bool loud = over_open && frame_db >= threshold_db + kLoudMarginDb;
     loud_run_frames_ = loud && !speech ? loud_run_frames_ + 1 : 0;
     if (speech || loud_run_frames_ >= kLoudConfirmFrames) {
       hold_frames_left_ = kHoldFrames;
@@ -104,7 +130,12 @@ void InputGate::ProcessWithSpeech(int num_frames, float* buffer,
     }
   }
   voice_.store(voice);
-  const bool want_open = voice || !enabled_.load();
+  Delay(num_frames, buffer);
+  // The delayed frame is two frames older than the decision, so it stays
+  // open while any of the frames it overlaps counted as voice.
+  recent_voice_ = ((recent_voice_ << 1) | (voice ? 1u : 0u)) &
+                  ((1u << (kLookaheadFrames + 1)) - 1);
+  const bool want_open = recent_voice_ != 0 || !enabled_.load();
 
   const float target = want_open ? 1.0f : 0.0f;
   if (gain_ == target) {
