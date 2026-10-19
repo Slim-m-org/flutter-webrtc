@@ -13,12 +13,14 @@ namespace {
 
 constexpr char kScreenCastInterface[] = "org.freedesktop.portal.ScreenCast";
 constexpr char kCreateSession[] = "CreateSession";
+constexpr char kPortalPath[] = "/org/freedesktop/portal/desktop";
 constexpr guint kSettleTimeoutMs = 1500;
 
 std::mutex g_mutex;
 bool g_armed = false;
 bool g_listed_once = false;
-bool g_filter_installed = false;
+guint g_filter_id = 0;
+GDBusConnection* g_connection = nullptr;
 std::function<void()> g_waiting;
 
 bool UnderWayland() {
@@ -26,14 +28,21 @@ bool UnderWayland() {
   return session_type != nullptr && std::string(session_type) == "wayland";
 }
 
-std::function<void()> TakeWaiting() {
+// Disarms for good: after this nothing can be dropped, and the filter itself
+// is gone, so a late list call can never take out the capturer's.
+std::function<void()> Settle() {
   std::lock_guard<std::mutex> lock(g_mutex);
   g_armed = false;
+  if (g_filter_id != 0) {
+    g_dbus_connection_remove_filter(g_connection, g_filter_id);
+    g_filter_id = 0;
+    g_clear_object(&g_connection);
+  }
   return std::exchange(g_waiting, nullptr);
 }
 
 gboolean RunWaiting(gpointer) {
-  if (auto done = TakeWaiting()) {
+  if (auto done = Settle()) {
     done();
   }
   return G_SOURCE_REMOVE;
@@ -48,7 +57,8 @@ GDBusMessage* DropListSession(GDBusConnection*,
           G_DBUS_MESSAGE_TYPE_METHOD_CALL ||
       g_strcmp0(g_dbus_message_get_interface(message), kScreenCastInterface) !=
           0 ||
-      g_strcmp0(g_dbus_message_get_member(message), kCreateSession) != 0) {
+      g_strcmp0(g_dbus_message_get_member(message), kCreateSession) != 0 ||
+      g_strcmp0(g_dbus_message_get_path(message), kPortalPath) != 0) {
     return message;
   }
   {
@@ -64,9 +74,6 @@ GDBusMessage* DropListSession(GDBusConnection*,
 }
 
 bool InstallFilter() {
-  if (g_filter_installed) {
-    return true;
-  }
   GError* error = nullptr;
   GDBusConnection* connection =
       g_bus_get_sync(G_BUS_TYPE_SESSION, nullptr, &error);
@@ -76,9 +83,9 @@ bool InstallFilter() {
     g_clear_error(&error);
     return false;
   }
-  g_dbus_connection_add_filter(connection, DropListSession, nullptr, nullptr);
-  g_object_unref(connection);
-  g_filter_installed = true;
+  g_filter_id = g_dbus_connection_add_filter(connection, DropListSession,
+                                             nullptr, nullptr);
+  g_connection = connection;
   return true;
 }
 
@@ -93,6 +100,10 @@ void PortalSessionGuard::Begin(bool swallow) {
   if (swallow && UnderWayland() && InstallFilter()) {
     g_armed = true;
   }
+}
+
+void PortalSessionGuard::Disarm() {
+  Settle();
 }
 
 void PortalSessionGuard::WhenSettled(std::function<void()> done) {

@@ -23,12 +23,14 @@ class PortalSessionGuard {
  public:
   static void Begin(bool swallow);
   static void WhenSettled(std::function<void()> done);
+  static void Disarm();
 };
 #else
 class PortalSessionGuard {
  public:
   static void Begin(bool) {}
   static void WhenSettled(std::function<void()> done) { done(); }
+  static void Disarm() {}
 };
 #endif
 

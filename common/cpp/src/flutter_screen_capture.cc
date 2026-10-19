@@ -57,6 +57,7 @@ void FlutterScreenCapture::GetDesktopSources(
     const EncodableList& types,
     std::unique_ptr<MethodResultProxy> result) {
   if (!BuildDesktopSourcesList(types, true, true)) {
+    PortalSessionGuard::Disarm();
     result->Error("Bad Arguments", "Failed to get desktop sources");
     return;
   }
@@ -195,6 +196,7 @@ void FlutterScreenCapture::GetDesktopSourceThumbnail(
 void FlutterScreenCapture::GetDisplayMedia(
     const EncodableMap& constraints,
     std::unique_ptr<MethodResultProxy> result) {
+  PortalSessionGuard::Disarm();
   std::string source_id = "0";
   // DesktopType source_type = kScreen;
   double fps = 30.0;
