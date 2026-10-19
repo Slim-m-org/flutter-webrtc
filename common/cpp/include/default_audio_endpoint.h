@@ -5,11 +5,13 @@
 
 namespace flutter_webrtc_plugin {
 
-// Windows only: the endpoint id of the default device for ordinary
-// (console) use, or empty when it cannot be read. libwebrtc otherwise opens
-// the communications device by role, and Windows answers a communications
-// stream by turning every other app down for the whole call.
-std::string DefaultConsoleEndpointId(bool capture);
+// Windows only: the endpoint id the call should use when the user picked no
+// device, or empty when it cannot be read. Playback takes the console default
+// so the call plays where every other app does. Capture takes the
+// communications default, which is the one a headset claims; the console
+// default capture device is often a webcam, line in or virtual device that
+// reads silence. Ducking is opted out separately (audio_ducking_opt_out.h).
+std::string DefaultCallEndpointId(bool capture);
 
 }  // namespace flutter_webrtc_plugin
 

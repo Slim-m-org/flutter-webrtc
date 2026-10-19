@@ -117,7 +117,7 @@ EventChannelProxy* FlutterWebRTCBase::event_channel() {
 int FlutterWebRTCBase::DefaultAudioDeviceIndex(bool capture) {
 #ifdef _WIN32
   if (!audio_device_) return -1;
-  const std::string id = DefaultConsoleEndpointId(capture);
+  const std::string id = DefaultCallEndpointId(capture);
   if (id.empty()) return -1;
   char name[256];
   char guid[256];
