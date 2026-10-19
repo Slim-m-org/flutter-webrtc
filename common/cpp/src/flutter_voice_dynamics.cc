@@ -20,6 +20,9 @@ constexpr float kReleaseMs = 150.0f;
 // Limiter: instant attack, so no sample ever leaves above the ceiling.
 constexpr float kCeilingDb = -1.0f;
 constexpr float kLimiterReleaseMs = 60.0f;
+// Below any audible level (-200 dB); snapping to zero keeps the decaying
+// envelope out of the denormal range, where float math is slow.
+constexpr float kEnvelopeFloor = 1e-20f;
 
 float Coefficient(float ms, int sample_rate_hz) {
   return 1.0f - std::exp(-1000.0f / (ms * static_cast<float>(sample_rate_hz)));
@@ -73,6 +76,7 @@ void VoiceDynamics::Process(float* buffer, int num_frames) {
     const float power = normalized * normalized;
     const float coeff = power > envelope_ ? attack_coeff_ : release_coeff_;
     envelope_ += (power - envelope_) * coeff;
+    if (envelope_ < kEnvelopeFloor) envelope_ = 0.0f;
     const float level_db = 10.0f * std::log10(envelope_ + 1e-12f);
     float sample = buffer[i] * DbToLinear(CompressorGainDb(level_db));
 

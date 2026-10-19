@@ -16,6 +16,9 @@ class VoiceDynamics {
   void Configure(bool enabled) { enabled_.store(enabled); }
   bool Enabled() const { return enabled_.load(); }
 
+  // Forget the levels, as when capture restarts.
+  void Restart() { was_enabled_ = false; }
+
   // One 10ms frame of mono samples on the int16 scale, in place.
   void Process(float* buffer, int num_frames);
 

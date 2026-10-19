@@ -9,10 +9,14 @@ add_executable(native_tests
   strong_noise_suppression_test.cc
   input_gate_vad_test.cc
   input_gate_meter_test.cc
+  input_gate_lookahead_test.cc
+  capture_chain_burst_test.cc
   main.cc
   "${ROOT}/common/cpp/src/flutter_noise_suppressor.cc"
   "${ROOT}/common/cpp/src/flutter_rate_converter.cc"
   "${ROOT}/common/cpp/src/flutter_input_gate.cc"
+  "${ROOT}/common/cpp/src/flutter_voice_dynamics.cc"
+  "${ROOT}/common/cpp/src/flutter_capture_chain.cc"
 )
 target_include_directories(native_tests PRIVATE
   "${CMAKE_CURRENT_LIST_DIR}/stub"

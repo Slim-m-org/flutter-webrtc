@@ -1,6 +1,7 @@
 #include "flutter_noise_suppressor.h"
 
 #include <algorithm>
+#include <cmath>
 
 #include "rnnoise.h"
 
@@ -13,6 +14,13 @@ constexpr int kRnnoiseRate = 48000;
 constexpr int kFrameSize = 480;
 // 480 kHz worth of samples is already far past any real capture device.
 constexpr int kMaxFrames = 4800;
+
+bool AllFinite(const float* x, int n) {
+  for (int i = 0; i < n; ++i) {
+    if (!std::isfinite(x[i])) return false;
+  }
+  return true;
+}
 
 }  // namespace
 
@@ -71,6 +79,13 @@ float NoiseSuppressor::ProcessChannel(Channel& channel, float* buffer,
     probability =
         rnnoise_process_frame(channel.state, channel.out48, channel.in48);
     channel.down.Convert(channel.out48, buffer);
+  }
+  if (!std::isfinite(probability) || !AllFinite(buffer, num_frames)) {
+    rnnoise_init(channel.state, nullptr);
+    channel.up.Reset();
+    channel.down.Reset();
+    std::fill(buffer, buffer + num_frames, 0.0f);
+    return 0.0f;
   }
   return probability;
 }

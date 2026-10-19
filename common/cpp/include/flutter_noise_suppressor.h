@@ -31,6 +31,9 @@ class NoiseSuppressor {
   void Configure(bool enabled) { enabled_.store(enabled); }
   bool Enabled() const { return enabled_.load(); }
 
+  // Forget the network and resampler history, as when capture restarts.
+  void Restart() { was_active_ = false; }
+
   // Whether the last frame was actually denoised.
   bool Active() const { return active_.load(); }
 
