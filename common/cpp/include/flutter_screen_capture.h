@@ -54,7 +54,9 @@ class FlutterScreenCapture : public MediaListObserver,
   void OnError(scoped_refptr<RTCDesktopCapturer> capturer) override;
 
  private:
-  bool BuildDesktopSourcesList(const EncodableList& types, bool force_reload);
+  bool BuildDesktopSourcesList(const EncodableList& types,
+                               bool force_reload,
+                               bool swallow_list_session = false);
 
  private:
   FlutterWebRTCBase* base_;

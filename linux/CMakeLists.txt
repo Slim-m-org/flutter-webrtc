@@ -41,6 +41,7 @@ add_library(${PLUGIN_NAME} SHARED
   "flutter/standard_codec.cc"
   "flutter/plugin_registrar.cc"
   "task_runner_linux.cc"
+  "portal_session_guard.cc"
 )
 
 include_directories(
@@ -54,7 +55,7 @@ include_directories(
 apply_standard_settings(${PLUGIN_NAME})
 set_target_properties(${PLUGIN_NAME} PROPERTIES
   CXX_VISIBILITY_PRESET hidden)
-target_compile_definitions(${PLUGIN_NAME} PRIVATE FLUTTER_PLUGIN_IMPL)
+target_compile_definitions(${PLUGIN_NAME} PRIVATE FLUTTER_PLUGIN_IMPL FLUTTER_WEBRTC_PORTAL_GUARD)
 target_include_directories(${PLUGIN_NAME} INTERFACE
   "${CMAKE_CURRENT_SOURCE_DIR}"
   "${CMAKE_CURRENT_SOURCE_DIR}/../common/cpp/include"

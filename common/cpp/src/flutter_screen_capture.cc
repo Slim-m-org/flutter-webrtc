@@ -1,5 +1,6 @@
 #include "flutter_screen_capture.h"
 #include "flutter_utf8_sanitize.h"
+#include "portal_session_guard.h"
 
 #include <stdexcept>
 
@@ -9,7 +10,8 @@ FlutterScreenCapture::FlutterScreenCapture(FlutterWebRTCBase* base)
     : base_(base) {}
 
 bool FlutterScreenCapture::BuildDesktopSourcesList(const EncodableList& types,
-                                                   bool force_reload) {
+                                                   bool force_reload,
+                                                   bool swallow_list_session) {
   size_t size = types.size();
   sources_.clear();
   for (size_t i = 0; i < size; i++) {
@@ -27,6 +29,9 @@ bool FlutterScreenCapture::BuildDesktopSourcesList(const EncodableList& types,
     if (it != medialist_.end()) {
       source_list = (*it).second;
     } else {
+      if (desktop_type == DesktopType::kScreen) {
+        PortalSessionGuard::Begin(swallow_list_session);
+      }
       source_list = base_->desktop_device_->GetDesktopMediaList(desktop_type);
       source_list->RegisterMediaListObserver(this);
       medialist_[desktop_type] = source_list;
@@ -51,7 +56,7 @@ bool FlutterScreenCapture::BuildDesktopSourcesList(const EncodableList& types,
 void FlutterScreenCapture::GetDesktopSources(
     const EncodableList& types,
     std::unique_ptr<MethodResultProxy> result) {
-  if (!BuildDesktopSourcesList(types, true)) {
+  if (!BuildDesktopSourcesList(types, true, true)) {
     result->Error("Bad Arguments", "Failed to get desktop sources");
     return;
   }
@@ -74,7 +79,11 @@ void FlutterScreenCapture::GetDesktopSources(
 
   auto map = EncodableMap();
   map[EncodableValue("sources")] = sources;
-  result->Success(EncodableValue(map));
+  std::shared_ptr<MethodResultProxy> shared_result = std::move(result);
+  PortalSessionGuard::WhenSettled(
+      [shared_result, response = EncodableValue(map)]() {
+        shared_result->Success(response);
+      });
 }
 
 void FlutterScreenCapture::ResetDesktopSources(
