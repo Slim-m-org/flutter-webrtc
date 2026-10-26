@@ -21,6 +21,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <cstdlib>
 #include <iostream>
 #include <vector>
 
@@ -209,7 +210,10 @@ bool PulseLoopbackCapturer::Start(scoped_refptr<RTCAudioSource> source) {
 
   source_ = source;
 
-  monitor_source_name_ = ResolveDefaultMonitorSource();
+  // A caller that built its own mix names it here; otherwise the default sink's monitor.
+  const char* chosen = std::getenv("SLIMM_SHARE_AUDIO_SOURCE");
+  monitor_source_name_ = (chosen && *chosen) ? std::string(chosen)
+                                             : ResolveDefaultMonitorSource();
   if (monitor_source_name_.empty()) {
     std::cerr << "[LoopbackCapturer] Could not resolve default sink monitor "
                  "source; system-audio capture unavailable.\n";
