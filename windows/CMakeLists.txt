@@ -9,6 +9,7 @@ endif()
 # Add the libwebrtc dependency
 include("${CMAKE_CURRENT_SOURCE_DIR}/../third_party/CMakeLists.txt")
 include("${CMAKE_CURRENT_SOURCE_DIR}/../third_party/rnnoise/CMakeLists.txt")
+include("${CMAKE_CURRENT_SOURCE_DIR}/../third_party/dfn/CMakeLists.txt")
 
 # This value is used when generating builds using this plugin, so it must
 # not be changed
@@ -25,6 +26,8 @@ add_library(${PLUGIN_NAME} SHARED
   "../common/cpp/src/flutter_capture_chain.cc"
   "../common/cpp/src/flutter_input_gate.cc"
   "../common/cpp/src/flutter_noise_suppressor.cc"
+  "../common/cpp/src/flutter_deep_filter.cc"
+  "../common/cpp/src/flutter_onset_cover.cc"
   "../common/cpp/src/flutter_rate_converter.cc"
   "../common/cpp/src/flutter_voice_dynamics.cc"
   "../common/cpp/src/flutter_media_stream.cc"
@@ -72,6 +75,9 @@ target_link_libraries(${PLUGIN_NAME} PRIVATE
   uuid.lib
   winmm.lib
 )
+if(TARGET slimm_dfn)
+  target_link_libraries(${PLUGIN_NAME} PRIVATE slimm_dfn)
+endif()
 
 # List of absolute paths to libraries that should be bundled with the plugin
 set(flutter_webrtc_bundled_libraries

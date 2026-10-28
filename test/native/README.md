@@ -12,3 +12,9 @@ build/native-tests/native_tests
 
 The binary exits non-zero if any case fails and prints the measured numbers
 (noise attenuation, resampler gain and delay, allocation counts) per rate.
+
+`strongest_tool in.f32 out.f32 strongest` runs a raw 48 kHz float file through
+the suppressor and prints the real-time factor; its tuning comes from the
+environment (see the top of `strongest_tool.cc`). Both targets build the
+DeepFilterNet library with cargo, so they need a Rust toolchain; without one
+the build warns and Strongest falls back to Strong.

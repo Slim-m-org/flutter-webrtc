@@ -553,6 +553,8 @@ void FlutterWebRTC::HandleMethodCall(
     VoiceDynamics::Instance()->Configure(findBoolean(params, "dynamics"));
     NoiseSuppressor::Instance()->Configure(
         findBoolean(params, "strongNoiseSuppression"));
+    NoiseSuppressor::Instance()->ConfigureStrongest(
+        findBoolean(params, "strongestNoiseSuppression"));
     result->Success();
   } else if (method_call.method_name().compare("getInputGate") == 0) {
     InputGate* gate = InputGate::Instance();
@@ -564,6 +566,8 @@ void FlutterWebRTC::HandleMethodCall(
         EncodableValue(VoiceDynamics::Instance()->Enabled());
     map[EncodableValue("strongNoiseSuppression")] =
         EncodableValue(NoiseSuppressor::Instance()->Active());
+    map[EncodableValue("strongestNoiseSuppression")] =
+        EncodableValue(NoiseSuppressor::Instance()->StrongestActive());
     result->Success(EncodableValue(map));
   } else if (method_call.method_name().compare("setVolume") == 0) {
     auto args = method_call.arguments();

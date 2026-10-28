@@ -1,0 +1,20 @@
+[package]
+name = "slimm_dfn"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+# DeepFilterNet 3 through tract, with the default model embedded in the library: no ONNX Runtime and no model file to ship.
+deep_filter = { git = "https://github.com/Rikorose/DeepFilterNet.git", rev = "978576a", default-features = false, features = ["tract", "default-model"] }
+ndarray = "0.15"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = true
