@@ -170,6 +170,13 @@ void FlutterScreenCapture::OnStop(scoped_refptr<RTCDesktopCapturer> capturer) {
 }
 
 void FlutterScreenCapture::OnError(scoped_refptr<RTCDesktopCapturer> capturer) {
+  // Tells Dart the share's source is gone, e.g. its window was closed.
+  EncodableMap info;
+  info[EncodableValue("event")] = "desktopCapturerError";
+  scoped_refptr<MediaSource> source = capturer->source();
+  info[EncodableValue("id")] =
+      EncodableValue(source.get() ? source->id().std_string() : std::string());
+  base_->event_channel()->Success(EncodableValue(info));
 }
 
 void FlutterScreenCapture::GetDesktopSourceThumbnail(

@@ -61,16 +61,26 @@ class FlutterVideoRenderer
   RTCVideoFrame::VideoRotation rotation_ = RTCVideoFrame::kVideoRotation_0;
 };
 
+enum class SetSrcObjectStatus { kOk, kUnknownTexture, kTrackNotFound };
+
 class FlutterVideoRendererManager {
  public:
   FlutterVideoRendererManager(FlutterWebRTCBase* base);
 
   void CreateVideoRendererTexture(std::unique_ptr<MethodResultProxy> result);
 
-  void VideoRendererSetSrcObject(int64_t texture_id,
-                                 const std::string& stream_id,
-                                 const std::string& owner_tag,
-                                 const std::string& track_id);
+  SetSrcObjectStatus VideoRendererSetSrcObject(int64_t texture_id,
+                                               const std::string& stream_id,
+                                               const std::string& owner_tag,
+                                               const std::string& track_id);
+
+  // Points every renderer showing `stream_id` at `track`.
+  void AttachVideoTrackToStreamRenderers(const std::string& stream_id,
+                                         scoped_refptr<RTCVideoTrack> track);
+
+  // Stops every renderer showing `track_id` of `stream_id`.
+  void DetachVideoTrackFromStreamRenderers(const std::string& stream_id,
+                                           const std::string& track_id);
 
   void VideoRendererDispose(int64_t texture_id,
                             std::unique_ptr<MethodResultProxy> result);

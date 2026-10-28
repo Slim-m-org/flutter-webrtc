@@ -526,8 +526,20 @@ void FlutterWebRTC::HandleMethodCall(
     const std::string owner_tag = findString(params, "ownerTag");
     const std::string track_id = findString(params, "trackId");
 
-    VideoRendererSetSrcObject(texture_id, stream_id, owner_tag, track_id);
-    result->Success();
+    switch (VideoRendererSetSrcObject(texture_id, stream_id, owner_tag,
+                                      track_id)) {
+      case SetSrcObjectStatus::kOk:
+        result->Success();
+        break;
+      case SetSrcObjectStatus::kUnknownTexture:
+        result->Error("VideoRendererSetSrcObjectFailed",
+                      "VideoRendererSetSrcObject() texture not found!");
+        break;
+      case SetSrcObjectStatus::kTrackNotFound:
+        result->Error("VideoRendererSetSrcObjectFailed",
+                      "VideoRendererSetSrcObject() track not found in stream!");
+        break;
+    }
   } else if (method_call.method_name().compare(
                  "mediaStreamTrackSwitchCamera") == 0) {
     if (!method_call.arguments()) {
@@ -673,11 +685,9 @@ void FlutterWebRTC::HandleMethodCall(
 
     MediaStreamAddTrack(stream, track, std::move(result));
     std::string kind = track->kind().std_string();
-    for (int i = 0; i < renders_.size(); i++) {
-      FlutterVideoRenderer* renderer = renders_.at(i).get();
-      if (renderer->CheckMediaStream(streamId) && 0 == kind.compare("video")) {
-        renderer->SetVideoTrack(static_cast<RTCVideoTrack*>(track.get()));
-      }
+    if (0 == kind.compare("video")) {
+      AttachVideoTrackToStreamRenderers(
+          streamId, static_cast<RTCVideoTrack*>(track.get()));
     }
   } else if (method_call.method_name().compare("mediaStreamRemoveTrack") == 0) {
     if (!method_call.arguments()) {
@@ -706,12 +716,7 @@ void FlutterWebRTC::HandleMethodCall(
 
     MediaStreamRemoveTrack(stream, track, std::move(result));
 
-    for (int i = 0; i < renders_.size(); i++) {
-      FlutterVideoRenderer* renderer = renders_.at(i).get();
-      if (renderer->CheckVideoTrack(streamId)) {
-        renderer->SetVideoTrack(nullptr);
-      }
-    }
+    DetachVideoTrackFromStreamRenderers(streamId, trackId);
   } else if (method_call.method_name().compare("addTrack") == 0) {
     if (!method_call.arguments()) {
       result->Error("Bad Arguments", "Null constraints arguments received");

@@ -95,6 +95,11 @@ class DesktopCapturerNative extends DesktopCapturer {
   final StreamController<DesktopCapturerSource> _onThumbnailChanged =
       StreamController.broadcast(sync: true);
 
+  @override
+  StreamController<String> get onCaptureError => _onCaptureError;
+  final StreamController<String> _onCaptureError =
+      StreamController.broadcast(sync: true);
+
   final Map<String, DesktopCapturerSourceNative> _sources = {};
 
   void handleEvent(String event, Map<dynamic, dynamic> map) async {
@@ -123,6 +128,9 @@ class DesktopCapturerNative extends DesktopCapturer {
             print('desktopSourceThumbnailChanged: $e');
           }
         }
+        break;
+      case 'desktopCapturerError':
+        _onCaptureError.add(map['id'] as String);
         break;
       case 'desktopSourceNameChanged':
         final source = _sources[map['id'] as String];

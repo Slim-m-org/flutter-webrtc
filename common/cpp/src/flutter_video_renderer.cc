@@ -174,34 +174,63 @@ void FlutterVideoRendererManager::CreateVideoRendererTexture(
   result->Success(EncodableValue(params));
 }
 
-void FlutterVideoRendererManager::VideoRendererSetSrcObject(
+SetSrcObjectStatus FlutterVideoRendererManager::VideoRendererSetSrcObject(
     int64_t texture_id,
     const std::string& stream_id,
     const std::string& owner_tag,
     const std::string& track_id) {
+  auto it = renderers_.find(texture_id);
+  if (it == renderers_.end()) {
+    return SetSrcObjectStatus::kUnknownTexture;
+  }
+  FlutterVideoRenderer* renderer = it->second.get();
+
   scoped_refptr<RTCMediaStream> stream =
       base_->MediaStreamForId(stream_id, owner_tag);
+  if (!stream.get()) {
+    renderer->SetVideoTrack(nullptr);
+    renderer->media_stream_id.clear();
+    return SetSrcObjectStatus::kOk;
+  }
 
-  auto it = renderers_.find(texture_id);
-  if (it != renderers_.end()) {
-    FlutterVideoRenderer* renderer = it->second.get();
-    if (stream.get()) {
-      auto video_tracks = stream->video_tracks();
-      if (video_tracks.size() > 0) {
-        if (track_id == std::string()) {
-          renderer->SetVideoTrack(video_tracks[0]);
-        } else {
-          for (auto track : video_tracks.std_vector()) {
-            if (track->id().std_string() == track_id) {
-              renderer->SetVideoTrack(track);
-              break;
-            }
-          }
-        }
-        renderer->media_stream_id = stream_id;
-      }
-    } else {
-      renderer->SetVideoTrack(nullptr);
+  // The renderer follows the stream even while it has no video, so a track
+  // added to it later reaches the renderer.
+  renderer->media_stream_id = stream_id;
+  auto video_tracks = stream->video_tracks();
+  // "0" is what the Dart side sends when the caller named no track.
+  const bool any_track = track_id.empty() || track_id == "0";
+  scoped_refptr<RTCVideoTrack> chosen;
+  for (auto track : video_tracks.std_vector()) {
+    if (any_track || track->id().std_string() == track_id) {
+      chosen = track;
+      break;
+    }
+  }
+  // Never leave the previous track attached to a source that no longer has it.
+  renderer->SetVideoTrack(chosen);
+  if (!chosen.get() && !any_track) {
+    return SetSrcObjectStatus::kTrackNotFound;
+  }
+  return SetSrcObjectStatus::kOk;
+}
+
+void FlutterVideoRendererManager::AttachVideoTrackToStreamRenderers(
+    const std::string& stream_id,
+    scoped_refptr<RTCVideoTrack> track) {
+  for (auto& entry : renderers_) {
+    if (entry.second->CheckMediaStream(stream_id)) {
+      entry.second->SetVideoTrack(track);
+    }
+  }
+}
+
+void FlutterVideoRendererManager::DetachVideoTrackFromStreamRenderers(
+    const std::string& stream_id,
+    const std::string& track_id) {
+  for (auto& entry : renderers_) {
+    if (entry.second->CheckMediaStream(stream_id) &&
+        entry.second->CheckVideoTrack(track_id)) {
+      entry.second->SetVideoTrack(nullptr);
     }
   }
 }

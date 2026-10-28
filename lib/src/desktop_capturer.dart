@@ -59,6 +59,10 @@ abstract class DesktopCapturer {
   StreamController<DesktopCapturerSource> get onThumbnailChanged =>
       throw UnimplementedError();
 
+  /// The source id of a running capture the platform gave up on, such as a
+  /// shared window that was closed.
+  StreamController<String> get onCaptureError => throw UnimplementedError();
+
   ///Get the screen source of the specified types
   Future<List<DesktopCapturerSource>> getSources({
     required List<SourceType> types,
