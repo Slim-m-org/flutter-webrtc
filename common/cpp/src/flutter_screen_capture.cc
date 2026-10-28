@@ -5,6 +5,7 @@
 #include "task_runner.h"
 
 #include <chrono>
+#include <cstdlib>
 #include <stdexcept>
 
 #ifdef _WIN32
@@ -259,6 +260,13 @@ bool FlutterScreenCapture::BuildDesktopSourcesList(const EncodableList& types,
       publish();
       return false;
     }
+#ifdef __linux__
+    // Window capture is X11-only in libwebrtc and aborts the process without
+    // an X display, so a pure Wayland session lists no windows.
+    if (desktop_type == DesktopType::kWindow && !getenv("DISPLAY")) {
+      continue;
+    }
+#endif
     scoped_refptr<RTCDesktopMediaList> source_list;
     auto it = medialist_.find(desktop_type);
     if (it != medialist_.end()) {
