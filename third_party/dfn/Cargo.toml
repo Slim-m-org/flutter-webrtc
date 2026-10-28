@@ -5,6 +5,9 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 publish = false
 
+# Its own root: the plugin is reached through a symlink inside an app that may sit in another Cargo workspace.
+[workspace]
+
 [lib]
 crate-type = ["staticlib"]
 
