@@ -46,7 +46,7 @@ void CaptureChain::Process(int /*num_bands*/, int num_frames,
   const float speech =
       NoiseSuppressor::Instance()->Process(buffer, num_frames);
   InputGate::Instance()->ProcessWithSpeech(num_frames, buffer, speech);
-  VoiceDynamics::Instance()->Process(buffer, num_frames);
+  VoiceDynamics::Instance()->Process(buffer, num_frames, speech);
 }
 
 void CaptureChain::Reset(int new_rate) {

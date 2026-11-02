@@ -563,6 +563,8 @@ void FlutterWebRTC::HandleMethodCall(
         findBoolean(params, "enabled"),
         static_cast<float>(threshold.value_or(-50.0)));
     VoiceDynamics::Instance()->Configure(findBoolean(params, "dynamics"));
+    VoiceDynamics::Instance()->ConfigureLeveler(
+        findBoolean(params, "levelAfterSuppression"));
     NoiseSuppressor::Instance()->Configure(
         findBoolean(params, "strongNoiseSuppression"));
     NoiseSuppressor::Instance()->ConfigureStrongest(
@@ -576,6 +578,8 @@ void FlutterWebRTC::HandleMethodCall(
     map[EncodableValue("voice")] = EncodableValue(gate->VoiceDetected());
     map[EncodableValue("dynamics")] =
         EncodableValue(VoiceDynamics::Instance()->Enabled());
+    map[EncodableValue("levelerGainDb")] = EncodableValue(
+        static_cast<double>(VoiceDynamics::Instance()->LevelerGainDb()));
     map[EncodableValue("strongNoiseSuppression")] =
         EncodableValue(NoiseSuppressor::Instance()->Active());
     map[EncodableValue("strongestNoiseSuppression")] =

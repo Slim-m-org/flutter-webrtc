@@ -13,6 +13,7 @@ add_executable(native_tests
   input_gate_meter_test.cc
   input_gate_lookahead_test.cc
   capture_chain_burst_test.cc
+  voice_leveler_test.cc
   main.cc
   "${ROOT}/common/cpp/src/flutter_noise_suppressor.cc"
   "${ROOT}/common/cpp/src/flutter_deep_filter.cc"
