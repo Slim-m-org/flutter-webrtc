@@ -1,4 +1,6 @@
+#include <chrono>
 #include <cstdint>
+#include <cstdio>
 #include <vector>
 
 #include "check.h"
@@ -143,6 +145,66 @@ TEST(ShareFit_ReadsTheSizeFromGetDisplayMediaConstraints) {
   bad[EncodableValue("width")] = EncodableValue(-5);
   bad[EncodableValue("height")] = EncodableValue(std::string("big"));
   CHECK(!RequestedFrameSize(bad).has_value());
+}
+
+// A textured frame whose rows carry `pad` extra bytes of garbage.
+struct PaddedFrame {
+  PaddedFrame(int w, int h, int pad) : width(w), height(h) {
+    const int cw = (w + 1) / 2, ch = (h + 1) / 2;
+    stride_y = w + pad;
+    stride_uv = cw + pad;
+    y.assign(static_cast<size_t>(stride_y) * h, 0xEE);
+    u.assign(static_cast<size_t>(stride_uv) * ch, 0xEE);
+    v.assign(u.size(), 0xEE);
+    for (int r = 0; r < h; ++r) {
+      for (int c = 0; c < w; ++c) y[r * stride_y + c] = (r * 7 + c * 13) & 0xFF;
+    }
+    for (int r = 0; r < ch; ++r) {
+      for (int c = 0; c < cw; ++c) {
+        u[r * stride_uv + c] = (r * 3 + c * 5) & 0xFF;
+        v[r * stride_uv + c] = (r * 11 + c) & 0xFF;
+      }
+    }
+  }
+
+  I420View View() const {
+    return {width,  height,         y.data(), stride_y,
+            u.data(), stride_uv, v.data(), stride_uv};
+  }
+
+  int width, height, stride_y = 0, stride_uv = 0;
+  std::vector<uint8_t> y, u, v;
+};
+
+TEST(ShareFit_PaddedStridesGiveTheSameOutputAsTightOnes) {
+  for (const int width : {2560, 2561}) {
+    PaddedFrame tight(width, 1441, 0);
+    PaddedFrame padded(width, 1441, 64);
+    FrameFitter tight_fitter({1920, 1080});
+    FrameFitter padded_fitter({1920, 1080});
+    const ScaledI420* a = tight_fitter.Fit(tight.View());
+    const ScaledI420* b = padded_fitter.Fit(padded.View());
+    CHECK(a != nullptr && b != nullptr);
+    if (!a || !b) return;
+    CHECK(a->width == b->width && a->height == b->height);
+    CHECK(a->y == b->y);
+    CHECK(a->u == b->u);
+    CHECK(a->v == b->v);
+  }
+}
+
+TEST(ShareFit_TimeOneFourKFrame) {
+  PaddedFrame in(3840, 2160, 0);
+  FrameFitter fitter({1920, 1080});
+  fitter.Fit(in.View());
+  constexpr int kRuns = 20;
+  const auto start = std::chrono::steady_clock::now();
+  for (int i = 0; i < kRuns; ++i) fitter.Fit(in.View());
+  const auto elapsed = std::chrono::steady_clock::now() - start;
+  const double ms =
+      std::chrono::duration<double, std::milli>(elapsed).count() / kRuns;
+  std::printf("  ShareFit 3840x2160 -> 1920x1080: %.2f ms per frame\n", ms);
+  CHECK(ms > 0);
 }
 
 }  // namespace
