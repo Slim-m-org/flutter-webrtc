@@ -1,4 +1,5 @@
 #include "flutter_screen_capture.h"
+#include "flutter_share_size_limit.h"
 #include "flutter_utf8_sanitize.h"
 #include "portal_session_guard.h"
 
@@ -509,9 +510,13 @@ void FlutterScreenCapture::GetDisplayMedia(
   // getDisplayMedia "cursor" video constraint. Defaults to true so behaviour is
   // unchanged when the constraint is absent — that is libwebrtc's own default.
   bool show_cursor = true;
+  // The size the caller wants to publish at; the screen is never delivered
+  // larger. Without it the screen goes out at its own size.
+  std::optional<FrameSize> size_limit;
 
   const EncodableMap video = findMap(constraints, "video");
   if (video != EncodableMap()) {
+    size_limit = RequestedFrameSize(video);
     const EncodableMap deviceId = findMap(video, "deviceId");
     if (deviceId != EncodableMap()) {
       source_id = findString(deviceId, "exact");
@@ -680,8 +685,19 @@ void FlutterScreenCapture::GetDisplayMedia(
 
   // TODO: RTCVideoSource -> RTCVideoTrack
 
-  scoped_refptr<RTCVideoTrack> track =
-      base_->factory_->CreateVideoTrack(video_source, uuid.c_str());
+  scoped_refptr<RTCVideoTrack> track;
+  if (size_limit) {
+    // The capturer cannot be asked for a size, so the track that is published
+    // reads the capture track through a limiter that scales the frames down.
+    scoped_refptr<RTCVideoTrack> capture_track =
+        base_->factory_->CreateVideoTrack(video_source,
+                                          (uuid + "-capture").c_str());
+    auto limiter = std::make_shared<ShareSizeLimiter>(*size_limit);
+    track = limiter->Start(base_->factory_, capture_track, uuid);
+    base_->track_releases_[uuid] = [limiter]() { limiter->Stop(); };
+  } else {
+    track = base_->factory_->CreateVideoTrack(video_source, uuid.c_str());
+  }
 
   EncodableList videoTracks;
   EncodableMap info;

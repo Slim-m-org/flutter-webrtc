@@ -5,6 +5,7 @@
 
 #include <string.h>
 #include <list>
+#include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -75,6 +76,7 @@ class FlutterWebRTCBase {
   void RemovePeerConnectionForId(const std::string& id);
 
   void RemoveMediaTrackForId(const std::string& id);
+  void ReleaseTrackResources(const std::string& id);
 
   FlutterPeerConnectionObserver* PeerConnectionObserversForId(
       const std::string& id);
@@ -138,6 +140,9 @@ class FlutterWebRTCBase {
   std::map<std::string, scoped_refptr<RTCMediaStream>> local_streams_;
   std::map<std::string, scoped_refptr<RTCMediaTrack>> local_tracks_;
   std::map<std::string, scoped_refptr<RTCVideoCapturer>> video_capturers_;
+  // Cleanup for a local track that owns more than libwebrtc's refcount
+  // releases by itself, run when the track is disposed. Keyed by track id.
+  std::map<std::string, std::function<void()>> track_releases_;
   std::map<std::string, std::shared_ptr<FlutterRTCDataChannelObserver>>
       data_channel_observers_;
   std::map<std::string, std::shared_ptr<FlutterPeerConnectionObserver>>

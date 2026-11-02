@@ -14,6 +14,7 @@ add_executable(native_tests
   input_gate_lookahead_test.cc
   capture_chain_burst_test.cc
   voice_leveler_test.cc
+  frame_fit_test.cc
   main.cc
   "${ROOT}/common/cpp/src/flutter_noise_suppressor.cc"
   "${ROOT}/common/cpp/src/flutter_deep_filter.cc"
@@ -22,10 +23,12 @@ add_executable(native_tests
   "${ROOT}/common/cpp/src/flutter_input_gate.cc"
   "${ROOT}/common/cpp/src/flutter_voice_dynamics.cc"
   "${ROOT}/common/cpp/src/flutter_capture_chain.cc"
+  "${ROOT}/common/cpp/src/flutter_frame_fit.cc"
 )
 target_include_directories(native_tests PRIVATE
   "${CMAKE_CURRENT_LIST_DIR}/stub"
   "${ROOT}/common/cpp/include"
+  "${ROOT}/linux/flutter/include"
 )
 target_link_libraries(native_tests PRIVATE slimm_rnnoise)
 if(TARGET slimm_dfn)

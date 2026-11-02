@@ -46,6 +46,9 @@ FlutterWebRTCBase::FlutterWebRTCBase(BinaryMessenger* messenger,
 }
 
 FlutterWebRTCBase::~FlutterWebRTCBase() {
+  while (!track_releases_.empty()) {
+    ReleaseTrackResources(track_releases_.begin()->first);
+  }
   if (webrtc_initialized_) {
     LibWebRTC::Terminate();
   }
@@ -176,6 +179,16 @@ void FlutterWebRTCBase::RemoveMediaTrackForId(const std::string& id) {
   auto it = local_tracks_.find(id);
   if (it != local_tracks_.end())
     local_tracks_.erase(it);
+  ReleaseTrackResources(id);
+}
+
+void FlutterWebRTCBase::ReleaseTrackResources(const std::string& id) {
+  auto it = track_releases_.find(id);
+  if (it == track_releases_.end())
+    return;
+  auto release = std::move(it->second);
+  track_releases_.erase(it);
+  release();
 }
 
 FlutterPeerConnectionObserver* FlutterWebRTCBase::PeerConnectionObserversForId(
@@ -451,6 +464,7 @@ void FlutterWebRTCBase::RemoveTracksForId(const std::string& id) {
   auto it = local_tracks_.find(id);
   if (it != local_tracks_.end())
     local_tracks_.erase(it);
+  ReleaseTrackResources(id);
 }
 
 libwebrtc::scoped_refptr<libwebrtc::RTCRtpSender>

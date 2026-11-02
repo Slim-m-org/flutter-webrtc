@@ -644,6 +644,7 @@ void FlutterMediaStream::MediaStreamDispose(
   for (auto track : video_tracks.std_vector()) {
     stream->RemoveTrack(track);
     base_->local_tracks_.erase(track->id().std_string());
+    base_->ReleaseTrackResources(track->id().std_string());
     if (base_->video_capturers_.find(track->id().std_string()) !=
         base_->video_capturers_.end()) {
       auto video_capture = base_->video_capturers_[track->id().std_string()];
