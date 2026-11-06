@@ -204,6 +204,7 @@ void FlutterWebRTCBase::RemoveMediaTrackForId(const std::string& id) {
 }
 
 void FlutterWebRTCBase::ReleaseTrackResources(const std::string& id) {
+  screen_track_ids_.erase(id);
   auto it = track_releases_.find(id);
   if (it == track_releases_.end())
     return;

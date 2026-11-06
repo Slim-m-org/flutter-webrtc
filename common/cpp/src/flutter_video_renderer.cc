@@ -119,10 +119,20 @@ void FlutterVideoRenderer::OnFrame(scoped_refptr<RTCVideoFrame> frame) {
 
     last_frame_size_ = {(size_t)frame->width(), (size_t)frame->height()};
   }
+  if (min_frame_interval_.count() > 0) {
+    const auto now = std::chrono::steady_clock::now();
+    if (now - last_accepted_ < min_frame_interval_) return;
+    last_accepted_ = now;
+  }
   mutex_.lock();
   frame_ = frame;
   mutex_.unlock();
   registrar_->MarkTextureFrameAvailable(texture_id_);
+}
+
+void FlutterVideoRenderer::SetMinFrameInterval(
+    std::chrono::microseconds interval) {
+  min_frame_interval_ = interval;
 }
 
 void FlutterVideoRenderer::SetVideoTrack(scoped_refptr<RTCVideoTrack> track) {
@@ -208,10 +218,23 @@ SetSrcObjectStatus FlutterVideoRendererManager::VideoRendererSetSrcObject(
   }
   // Never leave the previous track attached to a source that no longer has it.
   renderer->SetVideoTrack(chosen);
+  ApplyPreviewRate(renderer, chosen);
   if (!chosen.get() && !any_track) {
     return SetSrcObjectStatus::kTrackNotFound;
   }
   return SetSrcObjectStatus::kOk;
+}
+
+// A preview of your own screen only confirms what is being sent; drawing it
+// at the capture rate cost more CPU than capturing and encoding it.
+void FlutterVideoRendererManager::ApplyPreviewRate(
+    FlutterVideoRenderer* renderer,
+    scoped_refptr<RTCVideoTrack> track) {
+  constexpr std::chrono::microseconds kScreenPreviewInterval(1000000 / 15);
+  const bool screen =
+      track.get() && base_->screen_track_ids_.count(track->id().std_string());
+  renderer->SetMinFrameInterval(screen ? kScreenPreviewInterval
+                                       : std::chrono::microseconds(0));
 }
 
 void FlutterVideoRendererManager::AttachVideoTrackToStreamRenderers(
@@ -220,6 +243,7 @@ void FlutterVideoRendererManager::AttachVideoTrackToStreamRenderers(
   for (auto& entry : renderers_) {
     if (entry.second->CheckMediaStream(stream_id)) {
       entry.second->SetVideoTrack(track);
+      ApplyPreviewRate(entry.second.get(), track);
     }
   }
 }

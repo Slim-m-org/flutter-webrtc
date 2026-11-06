@@ -7,6 +7,7 @@
 #include <list>
 #include <functional>
 #include <map>
+#include <set>
 #include <memory>
 #include <mutex>
 
@@ -149,6 +150,8 @@ class FlutterWebRTCBase {
   std::map<std::string, scoped_refptr<RTCPeerConnection>> peerconnections_;
   std::map<std::string, scoped_refptr<RTCMediaStream>> local_streams_;
   std::map<std::string, scoped_refptr<RTCMediaTrack>> local_tracks_;
+  // Ids of screen-capture video tracks, whose own previews are drawn slower.
+  std::set<std::string> screen_track_ids_;
   std::map<std::string, scoped_refptr<RTCVideoCapturer>> video_capturers_;
   // Cleanup for a local track that owns more than libwebrtc's refcount
   // releases by itself, run when the track is disposed. Keyed by track id.

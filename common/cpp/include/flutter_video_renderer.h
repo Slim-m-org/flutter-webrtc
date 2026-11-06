@@ -7,6 +7,7 @@
 #include "rtc_video_frame.h"
 #include "rtc_video_renderer.h"
 
+#include <chrono>
 #include <mutex>
 
 namespace flutter_webrtc_plugin {
@@ -39,6 +40,10 @@ class FlutterVideoRenderer
 
   bool CheckVideoTrack(std::string mediaId);
 
+  // Frames closer together than this are dropped before conversion; zero
+  // keeps every frame.
+  void SetMinFrameInterval(std::chrono::microseconds interval);
+
   std::string media_stream_id;
 
  private:
@@ -48,6 +53,8 @@ class FlutterVideoRenderer
   };
   FrameSize last_frame_size_ = {0, 0};
   bool first_frame_rendered = false;
+  std::chrono::microseconds min_frame_interval_{0};
+  std::chrono::steady_clock::time_point last_accepted_{};
   TextureRegistrar* registrar_ = nullptr;
   std::unique_ptr<EventChannelProxy> event_channel_;
   int64_t texture_id_ = -1;
@@ -73,6 +80,9 @@ class FlutterVideoRendererManager {
                                                const std::string& stream_id,
                                                const std::string& owner_tag,
                                                const std::string& track_id);
+
+  void ApplyPreviewRate(FlutterVideoRenderer* renderer,
+                        scoped_refptr<RTCVideoTrack> track);
 
   // Points every renderer showing `stream_id` at `track`.
   void AttachVideoTrackToStreamRenderers(const std::string& stream_id,
