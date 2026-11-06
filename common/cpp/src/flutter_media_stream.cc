@@ -251,7 +251,7 @@ void FlutterMediaStream::GetUserAudio(const EncodableMap& constraints,
           sourceId ==
               SanitizeDeviceIdFromAudioBuffers(strRecordingName,
                                                strRecordingGuid)) {
-        base_->audio_device_->SetRecordingDevice(i);
+        base_->SelectRecordingDevice(i);
       }
     }
 
@@ -263,7 +263,7 @@ void FlutterMediaStream::GetUserAudio(const EncodableMap& constraints,
                                                 strRecordingGuid);
       sourceId = SanitizeDeviceIdFromAudioBuffers(strRecordingName,
                                                   strRecordingGuid);
-      base_->audio_device_->SetRecordingDevice(index);
+      base_->SelectRecordingDevice(index);
     }
 
     char strPlayoutName[256];
@@ -275,15 +275,12 @@ void FlutterMediaStream::GetUserAudio(const EncodableMap& constraints,
           deviceId ==
               SanitizeDeviceIdFromAudioBuffers(strPlayoutName,
                                                strPlayoutGuid)) {
-        base_->audio_device_->SetPlayoutDevice(i);
+        base_->SelectPlayoutDevice(i);
       }
     }
-    if (deviceId == "") {
-      const int found = base_->DefaultAudioDeviceIndex(false);
-      if (found >= 0) {
-        base_->audio_device_->SetPlayoutDevice(static_cast<uint16_t>(found));
-      }
-    }
+    // A microphone with no speaker asked for leaves the speaker alone:
+    // resetting it to the default restarted playout, which on Windows ended
+    // the capture just opened.
 
     OptOutOfAudioDucking();
 
@@ -536,7 +533,7 @@ void FlutterMediaStream::SelectAudioOutput(
     std::string cur_device_id =
         SanitizeDeviceIdFromAudioBuffers(deviceName, deviceGuid);
     if (device_id != "" && device_id == cur_device_id) {
-      base_->audio_device_->SetPlayoutDevice(i);
+      base_->SelectPlayoutDevice(i);
       found = true;
       break;
     }
@@ -562,7 +559,7 @@ void FlutterMediaStream::SelectAudioInput(
     std::string cur_device_id =
         SanitizeDeviceIdFromAudioBuffers(deviceName, deviceGuid);
     if (device_id != "" && device_id == cur_device_id) {
-      base_->audio_device_->SetRecordingDevice(i);
+      base_->SelectRecordingDevice(i);
       found = true;
       break;
     }

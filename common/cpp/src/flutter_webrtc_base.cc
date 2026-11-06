@@ -93,11 +93,11 @@ void FlutterWebRTCBase::EnsureWebRTCInitialized(bool enable_warp,
   desktop_device_ = factory_->GetDesktopDevice();
   const int playout = DefaultAudioDeviceIndex(false);
   if (playout >= 0) {
-    audio_device_->SetPlayoutDevice(static_cast<uint16_t>(playout));
+    SelectPlayoutDevice(static_cast<uint16_t>(playout));
   }
   const int recording = DefaultAudioDeviceIndex(true);
   if (recording >= 0) {
-    audio_device_->SetRecordingDevice(static_cast<uint16_t>(recording));
+    SelectRecordingDevice(static_cast<uint16_t>(recording));
   }
   OptOutOfAudioDucking();
   audio_processing_ = factory_->GetAudioProcessing();
@@ -115,6 +115,27 @@ void FlutterWebRTCBase::EnsureWebRTCInitialized(bool enable_warp,
 
 EventChannelProxy* FlutterWebRTCBase::event_channel() {
   return event_channel_ ? event_channel_.get() : nullptr;
+}
+
+void FlutterWebRTCBase::SelectPlayoutDevice(uint16_t index) {
+  if (!audio_device_) return;
+  char name[256] = {0};
+  char guid[256] = {0};
+  audio_device_->PlayoutDeviceName(index, name, guid);
+  if (!playout_guid_.empty() && playout_guid_ == guid) return;
+  audio_device_->SetPlayoutDevice(index);
+  playout_guid_ = guid;
+#ifdef _WIN32
+  if (recording_index_ >= 0) {
+    audio_device_->SetRecordingDevice(static_cast<uint16_t>(recording_index_));
+  }
+#endif
+}
+
+void FlutterWebRTCBase::SelectRecordingDevice(uint16_t index) {
+  if (!audio_device_) return;
+  audio_device_->SetRecordingDevice(index);
+  recording_index_ = index;
 }
 
 int FlutterWebRTCBase::DefaultAudioDeviceIndex(bool capture) {

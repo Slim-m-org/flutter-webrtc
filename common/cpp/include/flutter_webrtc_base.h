@@ -71,6 +71,14 @@ class FlutterWebRTCBase {
   // when it cannot be found.
   int DefaultAudioDeviceIndex(bool capture);
 
+  // Selects a speaker; choosing the one already selected does nothing.
+  // Windows' built-in echo canceller ends a running capture whenever playout
+  // restarts, so a real change there restarts the microphone after it.
+  void SelectPlayoutDevice(uint16_t index);
+
+  // Selects a microphone and remembers it for SelectPlayoutDevice.
+  void SelectRecordingDevice(uint16_t index);
+
   RTCPeerConnection* PeerConnectionForId(const std::string& id);
 
   void RemovePeerConnectionForId(const std::string& id);
@@ -130,6 +138,8 @@ class FlutterWebRTCBase {
   bool warp_enabled_ = false;
   scoped_refptr<RTCPeerConnectionFactory> factory_;
   scoped_refptr<RTCAudioDevice> audio_device_;
+  std::string playout_guid_;
+  int recording_index_ = -1;
   scoped_refptr<RTCVideoDevice> video_device_;
   scoped_refptr<RTCDesktopDevice> desktop_device_;
   scoped_refptr<RTCAudioProcessing> audio_processing_;
