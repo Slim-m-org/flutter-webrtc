@@ -17,9 +17,11 @@ struct PortalStreamGeometry {
 // libwebrtc reads the ScreenCast portal's Start reply itself and keeps only
 // the PipeWire node, so which monitor was picked never reaches the app. The
 // reply also carries that monitor's position and size; this watches the
-// session bus for it. Arm() runs as a share starts and forgets the last one,
-// Last() answers once the portal has replied for a monitor share. Only the
-// Linux build (which defines FLUTTER_WEBRTC_PORTAL_GUARD) does anything.
+// session bus for it. Arm() installs the watch before libwebrtc opens a
+// session, which it does while listing screens; each new session forgets
+// the last answer, and Last() answers once the portal has replied for a
+// monitor share. Only the Linux build (which defines
+// FLUTTER_WEBRTC_PORTAL_GUARD) does anything.
 #ifdef FLUTTER_WEBRTC_PORTAL_GUARD
 class PortalStreamWatch {
  public:

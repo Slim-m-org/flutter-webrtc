@@ -275,6 +275,7 @@ bool FlutterScreenCapture::BuildDesktopSourcesList(const EncodableList& types,
       source_list = (*it).second;
     } else {
       if (desktop_type == DesktopType::kScreen) {
+        PortalStreamWatch::Arm();
         PortalSessionGuard::Begin(swallow_list_session);
       }
       source_list = base_->desktop_device_->GetDesktopMediaList(desktop_type);

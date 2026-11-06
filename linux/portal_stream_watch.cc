@@ -9,6 +9,8 @@ namespace flutter_webrtc_plugin {
 namespace {
 
 constexpr char kRequestInterface[] = "org.freedesktop.portal.Request";
+constexpr char kScreenCastInterface[] = "org.freedesktop.portal.ScreenCast";
+constexpr char kCreateSession[] = "CreateSession";
 constexpr char kResponse[] = "Response";
 // xdg-desktop-portal's SourceType bit for a monitor share.
 constexpr guint32 kMonitorSource = 1;
@@ -45,6 +47,16 @@ GDBusMessage* WatchStartReply(GDBusConnection*,
                               GDBusMessage* message,
                               gboolean incoming,
                               gpointer) {
+  if (!incoming &&
+      g_dbus_message_get_message_type(message) ==
+          G_DBUS_MESSAGE_TYPE_METHOD_CALL &&
+      g_strcmp0(g_dbus_message_get_interface(message), kScreenCastInterface) ==
+          0 &&
+      g_strcmp0(g_dbus_message_get_member(message), kCreateSession) == 0) {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    g_last.reset();
+    return message;
+  }
   if (!incoming ||
       g_dbus_message_get_message_type(message) != G_DBUS_MESSAGE_TYPE_SIGNAL ||
       g_strcmp0(g_dbus_message_get_interface(message), kRequestInterface) !=
@@ -71,7 +83,6 @@ GDBusMessage* WatchStartReply(GDBusConnection*,
 
 void PortalStreamWatch::Arm() {
   std::lock_guard<std::mutex> lock(g_mutex);
-  g_last.reset();
   if (g_installed) {
     return;
   }
