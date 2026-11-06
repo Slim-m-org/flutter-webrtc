@@ -1,4 +1,5 @@
 #include "flutter_webrtc.h"
+#include "portal_stream_watch.h"
 #include "flutter_data_channel.h"
 #include "flutter_input_gate.h"
 #include "flutter_noise_suppressor.h"
@@ -93,6 +94,18 @@ void FlutterWebRTC::HandleMethodCall(
       return;
     }
     GetDesktopSources(types, std::move(result));
+  } else if (method_call.method_name().compare("portalStreamGeometry") == 0) {
+    auto geometry = PortalStreamWatch::Last();
+    if (!geometry) {
+      result->Success();
+      return;
+    }
+    EncodableMap map;
+    map[EncodableValue("x")] = EncodableValue(geometry->x);
+    map[EncodableValue("y")] = EncodableValue(geometry->y);
+    map[EncodableValue("width")] = EncodableValue(geometry->width);
+    map[EncodableValue("height")] = EncodableValue(geometry->height);
+    result->Success(EncodableValue(map));
   } else if (method_call.method_name().compare("resetDesktopSources") == 0) {
     ResetDesktopSources(std::move(result));
   } else if (method_call.method_name().compare("updateDesktopSources") == 0) {

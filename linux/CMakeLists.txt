@@ -47,6 +47,7 @@ add_library(${PLUGIN_NAME} SHARED
   "flutter/plugin_registrar.cc"
   "task_runner_linux.cc"
   "portal_session_guard.cc"
+  "portal_stream_watch.cc"
 )
 
 include_directories(

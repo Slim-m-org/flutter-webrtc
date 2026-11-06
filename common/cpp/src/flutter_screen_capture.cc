@@ -2,6 +2,7 @@
 #include "flutter_share_size_limit.h"
 #include "flutter_utf8_sanitize.h"
 #include "portal_session_guard.h"
+#include "portal_stream_watch.h"
 
 #include "task_runner.h"
 
@@ -503,6 +504,7 @@ void FlutterScreenCapture::GetDisplayMedia(
     const EncodableMap& constraints,
     std::unique_ptr<MethodResultProxy> result) {
   PortalSessionGuard::Disarm();
+  PortalStreamWatch::Arm();
   std::string source_id = "0";
   // DesktopType source_type = kScreen;
   double fps = 30.0;
