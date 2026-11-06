@@ -123,11 +123,25 @@ void FlutterWebRTCBase::SelectPlayoutDevice(uint16_t index) {
   char guid[256] = {0};
   audio_device_->PlayoutDeviceName(index, name, guid);
   if (!playout_guid_.empty() && playout_guid_ == guid) return;
+#ifdef _WIN32
+  std::vector<std::pair<scoped_refptr<RTCRtpSender>, scoped_refptr<RTCMediaTrack>>>
+      detached;
+  for (auto& entry : peerconnections_) {
+    for (scoped_refptr<RTCRtpSender> sender :
+         entry.second->senders().std_vector()) {
+      scoped_refptr<RTCMediaTrack> track = sender->track();
+      if (track && track->kind().std_string() == "audio") {
+        sender->set_track(nullptr);
+        detached.emplace_back(sender, track);
+      }
+    }
+  }
+#endif
   audio_device_->SetPlayoutDevice(index);
   playout_guid_ = guid;
 #ifdef _WIN32
-  if (recording_index_ >= 0) {
-    audio_device_->SetRecordingDevice(static_cast<uint16_t>(recording_index_));
+  for (auto& [sender, track] : detached) {
+    sender->set_track(track);
   }
 #endif
 }
@@ -135,7 +149,6 @@ void FlutterWebRTCBase::SelectPlayoutDevice(uint16_t index) {
 void FlutterWebRTCBase::SelectRecordingDevice(uint16_t index) {
   if (!audio_device_) return;
   audio_device_->SetRecordingDevice(index);
-  recording_index_ = index;
 }
 
 int FlutterWebRTCBase::DefaultAudioDeviceIndex(bool capture) {
