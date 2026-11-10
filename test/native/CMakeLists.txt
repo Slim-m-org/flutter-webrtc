@@ -39,6 +39,7 @@ endif()
 # Apart from native_tests, which replaces operator new as -fsanitize=thread does.
 find_package(Threads REQUIRED)
 add_executable(thread_tests
+  locked_map_test.cc
   loopback_session_test.cc
   check_registry.cc
   main.cc

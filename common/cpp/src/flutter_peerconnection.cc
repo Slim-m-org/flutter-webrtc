@@ -1346,7 +1346,7 @@ void FlutterPeerConnectionObserver::OnAddStream(
 
     videoTracks.push_back(EncodableValue(videoTrack));
   }
-  remote_streams_[streamId] = scoped_refptr<RTCMediaStream>(stream);
+  remote_streams_.Set(streamId, scoped_refptr<RTCMediaStream>(stream));
   params[EncodableValue("videoTracks")] = EncodableValue(videoTracks);
 
   event_channel_->Success(EncodableValue(params));
@@ -1366,7 +1366,7 @@ void FlutterPeerConnectionObserver::OnAddTrack(
     scoped_refptr<RTCRtpReceiver> receiver) {
   auto track = receiver->track();
   if (track.get()) {
-    remote_tracks_[track->id().std_string()] = track;
+    remote_tracks_.Set(track->id().std_string(), track);
   }
 
   std::vector<scoped_refptr<RTCMediaStream>> mediaStreams;
@@ -1399,8 +1399,7 @@ void FlutterPeerConnectionObserver::OnTrack(
   auto receiver = transceiver->receiver();
   auto track = receiver->track();
   if (track.get()) {
-    std::lock_guard<std::mutex> guard(remote_tracks_mutex_);
-    remote_tracks_[track->id().std_string()] = track;
+    remote_tracks_.Set(track->id().std_string(), track);
   }
   EncodableMap params;
   EncodableList streams_info;
@@ -1424,8 +1423,7 @@ void FlutterPeerConnectionObserver::OnRemoveTrack(
     scoped_refptr<RTCRtpReceiver> receiver) {
   auto track = receiver->track();
   if (track.get()) {
-    std::lock_guard<std::mutex> guard(remote_tracks_mutex_);
-    remote_tracks_.erase(track->id().std_string());
+    remote_tracks_.Erase(track->id().std_string());
   }
 
   EncodableMap params;
@@ -1493,23 +1491,17 @@ void FlutterPeerConnectionObserver::OnRenegotiationNeeded() {
 
 scoped_refptr<RTCMediaStream> FlutterPeerConnectionObserver::MediaStreamForId(
     const std::string& id) {
-  auto it = remote_streams_.find(id);
-  if (it != remote_streams_.end())
-    return (*it).second;
-  return nullptr;
+  return remote_streams_.Find(id);
 }
 
 scoped_refptr<RTCMediaTrack> FlutterPeerConnectionObserver::MediaTrackForId(
     const std::string& id) {
-  {
-    std::lock_guard<std::mutex> guard(remote_tracks_mutex_);
-    auto found = remote_tracks_.find(id);
-    if (found != remote_tracks_.end()) {
-      return found->second;
-    }
+  auto found = remote_tracks_.Find(id);
+  if (found.get()) {
+    return found;
   }
-  for (auto it = remote_streams_.begin(); it != remote_streams_.end(); it++) {
-    auto remoteStream = (*it).second;
+  // Walks a copy: reading a stream's tracks can wait on the signaling thread.
+  for (auto remoteStream : remote_streams_.Values()) {
     auto audio_tracks = remoteStream->audio_tracks();
     for (auto track : audio_tracks.std_vector()) {
       if (track->id().std_string() == id) {
@@ -1527,9 +1519,7 @@ scoped_refptr<RTCMediaTrack> FlutterPeerConnectionObserver::MediaTrackForId(
 }
 
 void FlutterPeerConnectionObserver::RemoveStreamForId(const std::string& id) {
-  auto it = remote_streams_.find(id);
-  if (it != remote_streams_.end())
-    remote_streams_.erase(it);
+  remote_streams_.Erase(id);
 }
 
 }  // namespace flutter_webrtc_plugin
