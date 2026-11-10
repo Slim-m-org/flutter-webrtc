@@ -62,3 +62,22 @@ target_link_libraries(strongest_tool PRIVATE slimm_rnnoise)
 if(TARGET slimm_dfn)
   target_link_libraries(strongest_tool PRIVATE slimm_dfn)
 endif()
+
+# The Linux portal session guard on a private session bus; glib makes it its own binary.
+find_package(PkgConfig)
+if(PkgConfig_FOUND)
+  pkg_check_modules(GIO IMPORTED_TARGET gio-2.0)
+endif()
+if(TARGET PkgConfig::GIO)
+  add_executable(portal_guard_tests
+    portal_session_guard_test.cc
+    check_registry.cc
+    "${ROOT}/linux/portal_session_guard.cc"
+  )
+  target_compile_definitions(portal_guard_tests PRIVATE FLUTTER_WEBRTC_PORTAL_GUARD)
+  target_include_directories(portal_guard_tests PRIVATE
+    "${CMAKE_CURRENT_LIST_DIR}"
+    "${ROOT}/common/cpp/include"
+  )
+  target_link_libraries(portal_guard_tests PRIVATE PkgConfig::GIO Threads::Threads)
+endif()

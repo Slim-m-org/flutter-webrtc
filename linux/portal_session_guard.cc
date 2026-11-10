@@ -7,6 +7,7 @@
 #include <mutex>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace flutter_webrtc_plugin {
 namespace {
@@ -21,7 +22,7 @@ bool g_armed = false;
 bool g_listed_once = false;
 guint g_filter_id = 0;
 GDBusConnection* g_connection = nullptr;
-std::function<void()> g_waiting;
+std::vector<std::function<void()>> g_waiting;
 
 bool UnderWayland() {
   const char* session_type = std::getenv("XDG_SESSION_TYPE");
@@ -29,8 +30,9 @@ bool UnderWayland() {
 }
 
 // Disarms for good: after this nothing can be dropped, and the filter itself
-// is gone, so a late list call can never take out the capturer's.
-std::function<void()> Settle() {
+// is gone, so a late list call can never take out the capturer's. Returns the
+// replies that were waiting for it.
+std::vector<std::function<void()>> Settle() {
   std::lock_guard<std::mutex> lock(g_mutex);
   g_armed = false;
   if (g_filter_id != 0) {
@@ -38,13 +40,24 @@ std::function<void()> Settle() {
     g_filter_id = 0;
     g_clear_object(&g_connection);
   }
-  return std::exchange(g_waiting, nullptr);
+  return std::exchange(g_waiting, {});
+}
+
+void RunAll(const std::vector<std::function<void()>>& waiting) {
+  for (const auto& done : waiting) {
+    done();
+  }
 }
 
 gboolean RunWaiting(gpointer) {
-  if (auto done = Settle()) {
-    done();
-  }
+  RunAll(Settle());
+  return G_SOURCE_REMOVE;
+}
+
+gboolean RunBatch(gpointer data) {
+  auto* waiting = static_cast<std::vector<std::function<void()>>*>(data);
+  RunAll(*waiting);
+  delete waiting;
   return G_SOURCE_REMOVE;
 }
 
@@ -103,14 +116,20 @@ void PortalSessionGuard::Begin(bool swallow) {
 }
 
 void PortalSessionGuard::Disarm() {
-  Settle();
+  auto waiting = Settle();
+  if (waiting.empty()) {
+    return;
+  }
+  g_main_context_invoke(
+      nullptr, RunBatch,
+      new std::vector<std::function<void()>>(std::move(waiting)));
 }
 
 void PortalSessionGuard::WhenSettled(std::function<void()> done) {
   {
     std::lock_guard<std::mutex> lock(g_mutex);
     if (g_armed) {
-      g_waiting = std::move(done);
+      g_waiting.push_back(std::move(done));
       g_timeout_add(kSettleTimeoutMs, RunWaiting, nullptr);
       return;
     }
