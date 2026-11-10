@@ -5,8 +5,8 @@ include(ExternalProject)
 # real third_party directory before downloading or extracting libwebrtc.
 get_filename_component(LIBWEBRTC_THIRD_PARTY_DIR "${CMAKE_CURRENT_LIST_DIR}" REALPATH)
 
-# Load binary version + download URL template from libwebrtc_version.ini so
-# bumping the prebuilt release does not require editing CMake.
+# Load binary version, download URL template and per-asset sha256 from
+# libwebrtc_version.ini so bumping the prebuilt release does not require editing CMake.
 set(LIBWEBRTC_VERSION_INI "${LIBWEBRTC_THIRD_PARTY_DIR}/libwebrtc_version.ini")
 if(NOT EXISTS "${LIBWEBRTC_VERSION_INI}")
   message(FATAL_ERROR "libwebrtc: missing version manifest at ${LIBWEBRTC_VERSION_INI}")
@@ -30,6 +30,8 @@ foreach(_line IN LISTS _libwebrtc_ini_lines)
     set(LIBWEBRTC_BINARY_VERSION "${_value}")
   elseif(_key STREQUAL "download_url")
     set(LIBWEBRTC_DOWNLOAD_URL_BASE "${_value}")
+  elseif(_key MATCHES "^sha256_(.+)$")
+    set("LIBWEBRTC_SHA256_${CMAKE_MATCH_1}" "${_value}")
   endif()
 endforeach()
 
@@ -79,6 +81,15 @@ else()
 endif()
 
 set(LIBWEBRTC_ASSET "libwebrtc-${LIBWEBRTC_OS}-${LIBWEBRTC_ARCH}-release")
+
+# The prebuilt binaries end up in every desktop build, so an asset is only used when it hashes to the pin.
+set(LIBWEBRTC_EXPECTED_SHA256 "${LIBWEBRTC_SHA256_${LIBWEBRTC_OS}_${LIBWEBRTC_ARCH}}")
+string(LENGTH "${LIBWEBRTC_EXPECTED_SHA256}" _libwebrtc_sha_length)
+if(NOT _libwebrtc_sha_length EQUAL 64 OR NOT LIBWEBRTC_EXPECTED_SHA256 MATCHES "^[0-9a-fA-F]+$")
+  message(FATAL_ERROR "libwebrtc: ${LIBWEBRTC_VERSION_INI} needs sha256_${LIBWEBRTC_OS}_${LIBWEBRTC_ARCH} "
+                      "(64 hex digits) for ${LIBWEBRTC_ASSET}.zip")
+endif()
+string(TOLOWER "${LIBWEBRTC_EXPECTED_SHA256}" LIBWEBRTC_EXPECTED_SHA256)
 set(ZIPFILE "${LIBWEBRTC_THIRD_PARTY_DIR}/downloads/${LIBWEBRTC_ASSET}.zip")
 
 # Final URL = <base>/<binary_version>/<asset>.zip
@@ -119,23 +130,34 @@ function(_libwebrtc_extract_and_normalize zip_path dest_dir)
   file(REMOVE_RECURSE "${_staging}")
 endfunction()
 
+set(_libwebrtc_downloaded FALSE)
+if(EXISTS "${ZIPFILE}")
+  file(SHA256 "${ZIPFILE}" _libwebrtc_cached_sha256)
+  if(NOT _libwebrtc_cached_sha256 STREQUAL LIBWEBRTC_EXPECTED_SHA256)
+    message(NOTICE "libwebrtc: ${ZIPFILE} does not match the pinned sha256, downloading it again")
+    file(REMOVE "${ZIPFILE}")
+  endif()
+endif()
+
 if(NOT EXISTS "${ZIPFILE}")
   message(NOTICE "download: ${DOWNLOAD_URL}")
   file(MAKE_DIRECTORY "${LIBWEBRTC_THIRD_PARTY_DIR}/downloads")
   file(DOWNLOAD "${DOWNLOAD_URL}"
       ${ZIPFILE}
+      EXPECTED_HASH SHA256=${LIBWEBRTC_EXPECTED_SHA256}
       STATUS download_status
       LOG download_log)
 
-  if(NOT download_status EQUAL 0)
-    message(FATAL_ERROR "Failed to download dependency: ${download_log}")
+  list(GET download_status 0 download_code)
+  if(NOT download_code EQUAL 0)
+    file(REMOVE "${ZIPFILE}")
+    message(FATAL_ERROR "Failed to download dependency (sha256 ${LIBWEBRTC_EXPECTED_SHA256} expected): ${download_log}")
   endif()
+  set(_libwebrtc_downloaded TRUE)
+endif()
 
+if(_libwebrtc_downloaded OR NOT EXISTS "${LIBWEBRTC_THIRD_PARTY_DIR}/libwebrtc")
   _libwebrtc_extract_and_normalize("${ZIPFILE}" "${LIBWEBRTC_THIRD_PARTY_DIR}")
 else()
-  if(NOT EXISTS "${LIBWEBRTC_THIRD_PARTY_DIR}/libwebrtc")
-    message(NOTICE "libwebrtc directory does not exist after extraction.")
-    _libwebrtc_extract_and_normalize("${ZIPFILE}" "${LIBWEBRTC_THIRD_PARTY_DIR}")
-  endif()
   message(TRACE "libwebrtc already downloaded.")
 endif()
