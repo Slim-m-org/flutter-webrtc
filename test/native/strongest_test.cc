@@ -129,18 +129,16 @@ TEST(strongest_without_the_model_is_exactly_strong) {
   CHECK(a == b);
 }
 
-TEST(strongest_follows_the_switch_and_keeps_a_stereo_second_channel) {
+TEST(strongest_follows_the_switch) {
   NoiseSuppressor suppressor;
   suppressor.ConfigureStrongest(true);
   CHECK(suppressor.StrongestEnabled());
-  std::vector<float> left = WhiteNoise(kFrame, 300.0f, 1);
-  std::vector<float> right = WhiteNoise(kFrame, 300.0f, 2);
-  float* planes[2] = {left.data(), right.data()};
-  for (int i = 0; i < 60; ++i) suppressor.ProcessPlanar(planes, 2, kFrame);
+  std::vector<float> frame = WhiteNoise(kFrame, 300.0f, 1);
+  for (int i = 0; i < 60; ++i) suppressor.Process(frame.data(), kFrame);
   CHECK(suppressor.Active());
   suppressor.ConfigureStrongest(false);
   suppressor.Configure(false);
-  suppressor.Process(left.data(), kFrame);
+  suppressor.Process(frame.data(), kFrame);
   CHECK(!suppressor.StrongestActive());
   CHECK(!suppressor.Active());
 }

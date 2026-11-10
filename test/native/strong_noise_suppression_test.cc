@@ -1,6 +1,7 @@
 #ifndef _USE_MATH_DEFINES
 #define _USE_MATH_DEFINES
 #endif
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -130,27 +131,21 @@ TEST(strong_attenuates_steady_noise_at_every_rate) {
   }
 }
 
-TEST(strong_stereo_processes_both_channels) {
-  for (int rate : kRates) {
-    NoiseSuppressor suppressor;
-    suppressor.Configure(true);
+TEST(strong_follows_a_rate_change_and_never_writes_past_the_frame) {
+  constexpr float kCanary = 12345.0f;
+  constexpr int kPad = 512;
+  NoiseSuppressor suppressor;
+  suppressor.Configure(true);
+  for (int rate : {44100, 32000, 48000, 16000, 44100, 8000, 96000, 44100}) {
     const int frames = rate / 100;
-    const int count = 200;
-    std::vector<float> left = WhiteNoise(frames * count, 600.0f, 3);
-    std::vector<float> right = WhiteNoise(frames * count, 600.0f, 4);
-    const std::vector<float> left_in = left, right_in = right;
-    for (int f = 0; f < count; ++f) {
-      float* planes[2] = {&left[f * frames], &right[f * frames]};
-      suppressor.ProcessPlanar(planes, 2, frames);
-    }
-    const size_t from = left.size() / 2;
-    const double left_db = 20.0 * std::log10(Rms(left, from, left.size()) /
-                                             Rms(left_in, from, left.size()));
-    const double right_db = 20.0 * std::log10(Rms(right, from, right.size()) /
-                                              Rms(right_in, from, right.size()));
-    std::printf("  %5d Hz: stereo noise L %.1f dB, R %.1f dB\n", rate, left_db,
-                right_db);
-    CHECK(left_db < -10.0 && right_db < -10.0);
+    std::vector<float> buffer = WhiteNoise(frames + kPad, 500.0f, 3);
+    std::fill(buffer.begin() + frames, buffer.end(), kCanary);
+    for (int i = 0; i < 3; ++i) suppressor.Process(buffer.data(), frames);
+    CHECK(suppressor.Active());
+    const bool untouched =
+        std::all_of(buffer.begin() + frames, buffer.end(),
+                    [](float v) { return v == kCanary; });
+    CHECK(untouched);
   }
 }
 

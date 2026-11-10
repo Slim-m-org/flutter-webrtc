@@ -18,15 +18,14 @@ namespace flutter_webrtc_plugin {
 // lets through. rnnoise only runs at 48 kHz, so any other capture rate is
 // resampled up for it and back down; 48 kHz skips both conversions.
 //
-// "Strongest" adds DeepFilterNet 3 on the first channel, which removes much
-// more of everything that is not a steady hum but treats the first words
-// after a quiet spell as noise. rnnoise keeps running beside it for the
+// "Strongest" adds DeepFilterNet 3, which removes much more of everything
+// that is not a steady hum but treats the first words after a quiet spell as
+// noise. rnnoise keeps running beside it for the
 // speech probability and to cover those onsets, and it is the fallback when
 // the model is missing or fails, so a call never has less suppression than
 // the member picked.
 class NoiseSuppressor {
  public:
-  static constexpr int kMaxChannels = 2;
   // Returned by Process when the frame was not denoised.
   static constexpr float kNoSpeechProbability = -1.0f;
 
@@ -77,15 +76,10 @@ class NoiseSuppressor {
   // frame was left alone.
   float Process(float* buffer, int num_frames);
 
-  // The same for one planar frame per channel; returns the loudest-speech
-  // channel's probability.
-  float ProcessPlanar(float* const* channels, int num_channels,
-                      int num_frames);
-
  private:
   struct Channel;
 
-  bool Prepare(int num_channels, int num_frames);
+  bool Prepare(int num_frames);
   float ProcessChannel(Channel& channel, float* buffer, int num_frames,
                        DeepFilter* deep);
   float ProcessStrongest(Channel& channel, DeepFilter& deep, float* out);
@@ -105,7 +99,7 @@ class NoiseSuppressor {
 
   // Only touched on the audio thread.
   std::unique_ptr<DeepFilter> model_;
-  std::unique_ptr<Channel> channels_[kMaxChannels];
+  std::unique_ptr<Channel> channel_;
   int rate_hz_ = 0;
   bool was_active_ = false;
 };

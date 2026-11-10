@@ -120,25 +120,19 @@ void NoiseSuppressor::DropModel(bool failed) {
   if (failed) model_failed_.store(true);
 }
 
-// Allocates only when the capture rate or channel count changes.
-bool NoiseSuppressor::Prepare(int num_channels, int num_frames) {
+// Allocates only when the capture rate changes.
+bool NoiseSuppressor::Prepare(int num_frames) {
   const int rate_hz = num_frames * 100;
-  for (int c = 0; c < num_channels; ++c) {
-    Channel* channel = channels_[c].get();
-    if (channel != nullptr && rate_hz == rate_hz_ && channel->state != nullptr) {
-      continue;
-    }
-    if (channel == nullptr) {
-      channels_[c] = std::make_unique<Channel>();
-      channel = channels_[c].get();
-    }
-    if (channel->state == nullptr) channel->state = rnnoise_create(nullptr);
-    if (channel->state == nullptr) return false;
-    if (rate_hz != kRnnoiseRate &&
-        (!channel->up.Configure(rate_hz, kRnnoiseRate) ||
-         !channel->down.Configure(kRnnoiseRate, rate_hz))) {
-      return false;
-    }
+  if (channel_ != nullptr && rate_hz == rate_hz_) return true;
+  // Stays zero if anything below fails, so the next frame configures again.
+  rate_hz_ = 0;
+  if (channel_ == nullptr) channel_ = std::make_unique<Channel>();
+  if (channel_->state == nullptr) channel_->state = rnnoise_create(nullptr);
+  if (channel_->state == nullptr) return false;
+  if (rate_hz != kRnnoiseRate &&
+      (!channel_->up.Configure(rate_hz, kRnnoiseRate) ||
+       !channel_->down.Configure(kRnnoiseRate, rate_hz))) {
+    return false;
   }
   rate_hz_ = rate_hz;
   return true;
@@ -201,17 +195,12 @@ float NoiseSuppressor::ProcessStrongest(Channel& channel, DeepFilter& deep,
   return late;
 }
 
-float NoiseSuppressor::ProcessPlanar(float* const* channels, int num_channels,
-                                     int num_frames) {
+float NoiseSuppressor::Process(float* buffer, int num_frames) {
   UpdateModel();
-  const bool strongest = strongest_.load();
-  const bool run = (enabled_.load() || strongest) && channels != nullptr &&
-                   num_channels >= 1 && num_channels <= kMaxChannels &&
-                   num_frames >= 1 && num_frames <= kMaxFrames;
-  bool ready = run && Prepare(num_channels, num_frames);
-  for (int c = 0; ready && c < num_channels; ++c) {
-    ready = channels[c] != nullptr;
-  }
+  const bool run = (enabled_.load() || strongest_.load()) &&
+                   buffer != nullptr && num_frames >= 1 &&
+                   num_frames <= kMaxFrames;
+  const bool ready = run && Prepare(num_frames);
   active_.store(ready);
   if (!ready) {
     was_active_ = false;
@@ -219,32 +208,19 @@ float NoiseSuppressor::ProcessPlanar(float* const* channels, int num_channels,
     return kNoSpeechProbability;
   }
   if (!was_active_) {
-    for (int c = 0; c < num_channels; ++c) {
-      rnnoise_init(channels_[c]->state, nullptr);
-      channels_[c]->up.Reset();
-      channels_[c]->down.Reset();
-      channels_[c]->ResetStrongest();
-    }
+    rnnoise_init(channel_->state, nullptr);
+    channel_->up.Reset();
+    channel_->down.Reset();
+    channel_->ResetStrongest();
   }
   was_active_ = true;
 
-  float best = 0.0f;
-  bool deep_ran = false;
-  for (int c = 0; c < num_channels; ++c) {
-    DeepFilter* deep = c == 0 ? model_.get() : nullptr;
-    Channel& channel = *channels_[c];
-    channel.deep_failed = false;
-    best = std::max(best,
-                    ProcessChannel(channel, channels[c], num_frames, deep));
-    deep_ran = deep_ran || (deep != nullptr && !channel.deep_failed);
-    if (channel.deep_failed) DropModel(true);
-  }
-  strongest_active_.store(deep_ran);
-  return best;
-}
-
-float NoiseSuppressor::Process(float* buffer, int num_frames) {
-  return ProcessPlanar(&buffer, 1, num_frames);
+  DeepFilter* deep = model_.get();
+  channel_->deep_failed = false;
+  const float probability = ProcessChannel(*channel_, buffer, num_frames, deep);
+  if (channel_->deep_failed) DropModel(true);
+  strongest_active_.store(deep != nullptr && !channel_->deep_failed);
+  return probability;
 }
 
 }  // namespace flutter_webrtc_plugin
