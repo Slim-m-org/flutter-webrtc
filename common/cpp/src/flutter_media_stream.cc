@@ -86,22 +86,23 @@ void FlutterMediaStream::GetUserMedia(
   // and on desktop the platform thread also paints the window and takes input,
   // so the open runs on a worker and only the bookkeeping and reply come back.
   std::shared_ptr<MethodResultProxy> shared_result = std::move(result);
-  std::thread([this, constraints, stream, params, uuid,
-               shared_result]() mutable {
+  std::weak_ptr<bool> alive = alive_;
+  camera_executor_.Post([this, alive, constraints, stream, params, uuid,
+                         shared_result]() mutable {
     auto commits = std::make_shared<Commits>();
-    {
-      std::lock_guard<std::mutex> guard(video_open_mutex_);
-      GetUserVideo(constraints, stream, params, commits.get());
-    }
+    GetUserVideo(constraints, stream, params, commits.get());
     base_->task_runner_->EnqueueTask(
-        [this, stream, params, uuid, shared_result, commits]() {
+        [this, alive, stream, params, uuid, shared_result, commits]() {
+          if (alive.expired()) {
+            return;
+          }
           for (auto& commit : *commits) {
             commit();
           }
           base_->local_streams_[uuid] = stream;
           shared_result->Success(EncodableValue(params));
         });
-  }).detach();
+  });
 }
 
 void addDefaultAudioConstraints(

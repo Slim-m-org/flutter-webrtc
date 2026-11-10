@@ -2,11 +2,12 @@
 #define FLUTTER_WEBRTC_RTC_GET_USERMEDIA_HXX
 
 #include <functional>
-#include <mutex>
+#include <memory>
 #include <vector>
 
 #include "flutter_common.h"
 #include "flutter_webrtc_base.h"
+#include "serial_executor.h"
 
 namespace flutter_webrtc_plugin {
 
@@ -59,8 +60,12 @@ class FlutterMediaStream {
 
  private:
   FlutterWebRTCBase* base_;
-  // One camera open at a time, so two quick toggles do not race the device.
-  std::mutex video_open_mutex_;
+  // Replies queued to the platform thread can outlive this object, so they hold
+  // a weak copy of this.
+  std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
+  // Runs one camera open at a time, so two quick toggles do not race the
+  // device. Last member, so the open in flight is joined before the rest goes.
+  SerialExecutor camera_executor_;
 };
 
 }  // namespace flutter_webrtc_plugin

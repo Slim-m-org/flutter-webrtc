@@ -6,6 +6,8 @@
 #include "flutter_common.h"
 #include "flutter_webrtc_base.h"
 #include "locked_map.h"
+#include "request_coalescer.h"
+#include "serial_executor.h"
 
 namespace flutter_webrtc_plugin {
 
@@ -199,6 +201,11 @@ class FlutterPeerConnection {
 
  private:
   FlutterWebRTCBase* base_;
+
+  using StatsKey = std::pair<RTCPeerConnection*, std::string>;
+  RequestCoalescer<StatsKey, std::shared_ptr<MethodResultProxy>> stats_requests_;
+  // Last member, so its worker is joined before the requests it reads go.
+  SerialExecutor stats_executor_;
 };
 
 std::string RTCMediaTypeToString(RTCMediaType type);

@@ -1073,12 +1073,38 @@ EncodableMap statsToMap(const scoped_refptr<MediaRTCStats>& stats) {
   return report_map;
 }
 
+namespace {
+
+// Answers every getStats call that shared one collection.
+class StatsReply {
+ public:
+  explicit StatsReply(std::vector<std::shared_ptr<MethodResultProxy>> waiters)
+      : waiters_(std::move(waiters)) {}
+
+  void Success(const EncodableValue& stats) {
+    for (auto& waiter : waiters_) {
+      waiter->Success(stats);
+    }
+  }
+
+  void Error(const std::string& code, const std::string& message) {
+    for (auto& waiter : waiters_) {
+      waiter->Error(code, message);
+    }
+  }
+
+ private:
+  std::vector<std::shared_ptr<MethodResultProxy>> waiters_;
+};
+
+}  // namespace
+
 // Runs off the platform thread: every call here marshals onto the signaling
 // thread and waits, and that thread can sit behind a camera open for seconds.
 static void CollectStats(scoped_refptr<RTCPeerConnection> pc,
                          const std::string& track_id,
                          bool has_track,
-                         std::shared_ptr<MethodResultProxy> result_ptr) {
+                         std::shared_ptr<StatsReply> result_ptr) {
   if (has_track) {
     bool found = false;
     auto receivers = pc->receivers();
@@ -1151,10 +1177,15 @@ void FlutterPeerConnection::GetStats(
   // The track maps belong to the platform thread, so the lookup stays here.
   const bool has_track =
       track_id != "" && base_->MediaTracksForId(track_id) != nullptr;
+  const StatsKey key(pc, has_track ? track_id : std::string());
+  if (!stats_requests_.Add(key, result_ptr)) {
+    return;
+  }
   scoped_refptr<RTCPeerConnection> pc_ref(pc);
-  std::thread([pc_ref, track_id, has_track, result_ptr]() {
-    CollectStats(pc_ref, track_id, has_track, result_ptr);
-  }).detach();
+  stats_executor_.Post([this, key, pc_ref, track_id, has_track]() {
+    auto reply = std::make_shared<StatsReply>(stats_requests_.Take(key));
+    CollectStats(pc_ref, track_id, has_track, reply);
+  });
 }
 
 void FlutterPeerConnection::MediaStreamAddTrack(
