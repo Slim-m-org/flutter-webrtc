@@ -2,7 +2,7 @@
 #define _USE_MATH_DEFINES
 #endif
 #include <algorithm>
-#include <chrono>
+#include <cfenv>
 #include <cmath>
 #include <cstdio>
 #include <limits>
@@ -132,21 +132,14 @@ TEST(chain_does_not_make_a_tone_from_a_dc_offset) {
   CHECK(s.Run(100, [](int) { return 0.0f; }) <= kAudible);
 }
 
+// A subnormal result raises the underflow flag; scheduler noise cannot fake that.
 TEST(chain_dynamics_flushes_denormals_after_loud_speech) {
   Configure(false, true, true);
   Stream s{48000};
   s.Run(300, [&](int i) { return s.Speech(i); });
-  using Clock = std::chrono::steady_clock;
-  double worst_us = 0.0;
-  for (int k = 0; k < 6000; ++k) {
-    const auto start = Clock::now();
-    s.Run(1, [](int) { return 0.0f; });
-    const double us =
-        std::chrono::duration<double, std::micro>(Clock::now() - start).count();
-    worst_us = std::max(worst_us, us);
-  }
-  std::printf("  slowest silent frame after speech: %.1f us\n", worst_us);
-  CHECK(worst_us < 2000.0);
+  std::feclearexcept(FE_ALL_EXCEPT);
+  s.Run(6000, [](int) { return 0.0f; });
+  CHECK(std::fetestexcept(FE_UNDERFLOW) == 0);
 }
 
 TEST(chain_adds_no_burst_to_room_noise_across_rate_switches) {

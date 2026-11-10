@@ -15,6 +15,7 @@ add_executable(native_tests
   capture_chain_burst_test.cc
   voice_leveler_test.cc
   frame_fit_test.cc
+  shared_state_test.cc
   check_registry.cc
   main.cc
   "${ROOT}/common/cpp/src/flutter_noise_suppressor.cc"
@@ -84,3 +85,28 @@ if(TARGET PkgConfig::GIO)
   )
   target_link_libraries(portal_guard_tests PRIVATE PkgConfig::GIO Threads::Threads)
 endif()
+
+# A binary whose only test skips, to check how the harness reports and counts one.
+add_executable(harness_probe harness_probe.cc check_registry.cc)
+
+# NATIVE_TESTS_STRICT=ON makes a skipped test fail, which CI uses so a missing model or bus is not a pass.
+option(NATIVE_TESTS_STRICT "Fail on a skipped test" OFF)
+set(_strict_flag "")
+if(NATIVE_TESTS_STRICT)
+  set(_strict_flag --strict)
+endif()
+
+enable_testing()
+add_test(NAME native_tests COMMAND native_tests ${_strict_flag})
+add_test(NAME thread_tests COMMAND thread_tests ${_strict_flag})
+if(TARGET portal_guard_tests)
+  add_test(NAME portal_guard_tests COMMAND portal_guard_tests ${_strict_flag})
+endif()
+add_test(NAME harness_reports_a_skip COMMAND harness_probe)
+set_tests_properties(harness_reports_a_skip PROPERTIES
+  PASS_REGULAR_EXPRESSION "skip +probe_skips.*0 failure\\(s\\), 1 skipped")
+add_test(NAME harness_strict_fails_a_skip COMMAND harness_probe --strict)
+set_tests_properties(harness_strict_fails_a_skip PROPERTIES WILL_FAIL TRUE)
+add_test(NAME libwebrtc_download_is_pinned
+  COMMAND "${CMAKE_COMMAND}" -DROOT=${ROOT} -DWORK=${CMAKE_CURRENT_BINARY_DIR}/libwebrtc_pin
+          -P "${CMAKE_CURRENT_LIST_DIR}/libwebrtc_pin_test.cmake")

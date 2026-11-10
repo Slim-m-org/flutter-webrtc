@@ -92,7 +92,7 @@ TEST(onset_cover_waits_out_the_first_frames_of_a_capture) {
 }
 
 TEST(strongest_runs_deep_filter_and_removes_more_than_strong) {
-  if (!DeepFilter::Compiled()) return;
+  if (!DeepFilter::Compiled()) SKIP("built without the DeepFilterNet library");
   const std::vector<float> noise = WhiteNoise(kFrame * 300, 300.0f, 5);
   NoiseSuppressor strong;
   strong.Configure(true);

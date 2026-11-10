@@ -15,6 +15,17 @@ build/native-tests/thread_tests
 The binary exits non-zero if any case fails and prints the measured numbers
 (noise attenuation, resampler gain and delay, allocation counts) per rate.
 
+`ctest --test-dir build/native-tests` runs all of them, plus the checks of the harness and of the libwebrtc download pin.
+Configure with `-DNATIVE_TESTS_STRICT=ON`, as CI does, and a skipped test fails the run instead of being reported as `skip`.
+A test skips with `SKIP("reason")` when it cannot run here, such as the Strongest test in a build without cargo.
+`native_tests --shuffle <seed>` runs the cases in another order, to find one that leans on state an earlier case left behind.
+Every case starts from the same state of the capture chain singletons, set in `shared_state_test.cc`.
+
+`libwebrtc_pin_test.cmake` runs `third_party/CMakeLists.txt` against a local release folder.
+It checks that the prebuilt libwebrtc is only used when it hashes to the `sha256_<os>_<arch>` pinned in `third_party/libwebrtc_version.ini`.
+
+`.github/workflows/native-tests.yml` runs this suite on Linux, and on Windows without failing the workflow until it has run green there.
+
 `thread_tests` holds the thread-safety helpers' cases, apart from the rest so it can be built with a race detector.
 A missing lock only shows under one, so also configure a second build directory with `-DCMAKE_CXX_COMPILER=clang++ -DCMAKE_CXX_FLAGS=-fsanitize=thread` and build `--target thread_tests`.
 

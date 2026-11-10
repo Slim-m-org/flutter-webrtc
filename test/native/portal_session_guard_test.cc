@@ -36,23 +36,18 @@ TEST(PortalSessionGuard_DisarmAnswersEveryParkedListReply) {
 }  // namespace
 
 // Runs the tests on a private session bus, the one the guard's filter sits on.
-int main() {
+int main(int argc, char** argv) {
+  ParseArgs(argc, argv);
   if (g_find_program_in_path("dbus-daemon") == nullptr) {
-    std::printf("skip: no dbus-daemon to start a private session bus\n");
-    return 0;
+    return SuiteSkipped("no dbus-daemon to start a private session bus");
   }
   GTestDBus* bus = g_test_dbus_new(G_TEST_DBUS_NONE);
   g_test_dbus_up(bus);
   g_main_context_acquire(g_main_context_default());
 
-  for (const TestCase& test : Registry()) {
-    const int before = Failures();
-    test.body();
-    std::printf("%s %s\n", Failures() == before ? "ok  " : "FAIL", test.name);
-  }
+  RunRegistry();
 
   g_test_dbus_down(bus);
   g_object_unref(bus);
-  std::printf("%d failure(s)\n", Failures());
-  return Failures() == 0 ? 0 : 1;
+  return Finish();
 }
