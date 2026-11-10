@@ -68,7 +68,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
     message(FATAL_ERROR "libwebrtc: unsupported Windows arch '${CMAKE_GENERATOR_PLATFORM}'")
   endif()
 else()
-  # Flutter Linux / eLinux pass the target as e.g. linux-x64 or linux-arm64
+  # Flutter Linux passes the target as e.g. linux-x64 or linux-arm64
   if(DEFINED FLUTTER_TARGET_PLATFORM AND FLUTTER_TARGET_PLATFORM MATCHES "arm64")
     set(LIBWEBRTC_ARCH "arm64")
   elseif(DEFINED FLUTTER_TARGET_PLATFORM AND FLUTTER_TARGET_PLATFORM MATCHES "x64")
