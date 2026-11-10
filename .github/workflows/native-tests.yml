@@ -1,0 +1,88 @@
+# The native audio tests and the DeepFilterNet license check; build.yml only builds the example app.
+name: Native tests
+
+on:
+  push:
+    paths:
+      - "common/cpp/**"
+      - "linux/**"
+      - "windows/**"
+      - "test/native/**"
+      - "third_party/**"
+      - ".github/workflows/native-tests.yml"
+  pull_request:
+    paths:
+      - "common/cpp/**"
+      - "linux/**"
+      - "windows/**"
+      - "test/native/**"
+      - "third_party/**"
+      - ".github/workflows/native-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: Native tests (Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install glib and a D-Bus daemon for the portal guard tests
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libglib2.0-dev dbus-daemon
+
+      # NATIVE_TESTS_STRICT makes a skipped test fail, so a missing cargo or bus cannot pass quietly.
+      - name: Configure
+        run: cmake -S test/native -B build/native-tests -DCMAKE_BUILD_TYPE=Release -DNATIVE_TESTS_STRICT=ON
+
+      - name: Build
+        run: cmake --build build/native-tests --parallel 4
+
+      - name: The portal guard tests were built
+        run: test -x build/native-tests/portal_guard_tests
+
+      - name: Test
+        run: ctest --test-dir build/native-tests --output-on-failure
+
+      - name: Test in a shuffled order
+        run: build/native-tests/native_tests --strict --shuffle "$GITHUB_RUN_NUMBER"
+
+  windows:
+    name: Native tests (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 45
+    # Nothing here has been built with MSVC yet; drop this once it has run green.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Configure
+        run: cmake -S test/native -B build/native-tests -DNATIVE_TESTS_STRICT=ON
+
+      - name: Build
+        run: cmake --build build/native-tests --config Release --parallel 4
+
+      - name: Test
+        run: ctest --test-dir build/native-tests -C Release --output-on-failure
+
+  licenses:
+    name: DeepFilterNet crate licenses
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          manifest-path: third_party/dfn/Cargo.toml
+          command: check licenses
+          command-arguments: "--config third_party/dfn/deny.toml"

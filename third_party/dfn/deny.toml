@@ -1,0 +1,26 @@
+# The license policy for the DeepFilterNet crate tree, which links into every Linux and Windows build.
+# It is the allowlist slim-m uses for its own dependencies: slim-m is not open source and cannot take
+# on a copyleft obligation, so anything outside this list wants a human decision, one crate at a time.
+
+[licenses]
+allow = [
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "MIT",
+  "BSD-1-Clause",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Zlib",
+  "BSL-1.0",
+  "Unicode-3.0",
+  "Unlicense",
+  "CDLA-Permissive-2.0",
+]
+confidence-threshold = 0.9
+unused-allowed-license = "allow"
+
+# A public-domain dedication that deep_filter reaches through rust-ini; it asks for nothing.
+[[licenses.exceptions]]
+name = "tiny-keccak"
+allow = ["CC0-1.0"]
