@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "loopback_capturer.h"
+#include "loopback_session.h"
 #include "rtc_audio_source.h"
 #include "rtc_audio_track.h"
 #include "rtc_desktop_capturer.h"
@@ -130,11 +131,10 @@ class FlutterScreenCapture : public MediaListObserver,
   std::mutex capturers_mutex_;
   std::vector<scoped_refptr<RTCDesktopCapturer>> active_capturers_;
 
-  // Loopback audio capturer active during a screen-share session.
-  // Null when not capturing or on platforms without loopback support.
-  std::unique_ptr<LoopbackCapturer> loopback_capturer_;
-  // The custom audio source fed by the loopback capturer.
-  scoped_refptr<RTCAudioSource> loopback_audio_source_;
+  // The system audio of the share in progress, empty without loopback support.
+  // Keyed to its capturer, because a capturer's stop event can arrive after a
+  // newer share has replaced it.
+  LoopbackSession loopback_;
 };
 
 }  // namespace flutter_webrtc_plugin

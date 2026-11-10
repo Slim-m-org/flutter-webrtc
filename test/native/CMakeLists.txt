@@ -15,6 +15,7 @@ add_executable(native_tests
   capture_chain_burst_test.cc
   voice_leveler_test.cc
   frame_fit_test.cc
+  check_registry.cc
   main.cc
   "${ROOT}/common/cpp/src/flutter_noise_suppressor.cc"
   "${ROOT}/common/cpp/src/flutter_deep_filter.cc"
@@ -34,6 +35,19 @@ target_link_libraries(native_tests PRIVATE slimm_rnnoise)
 if(TARGET slimm_dfn)
   target_link_libraries(native_tests PRIVATE slimm_dfn)
 endif()
+
+# Apart from native_tests, which replaces operator new as -fsanitize=thread does.
+find_package(Threads REQUIRED)
+add_executable(thread_tests
+  loopback_session_test.cc
+  check_registry.cc
+  main.cc
+)
+target_include_directories(thread_tests PRIVATE
+  "${CMAKE_CURRENT_LIST_DIR}/stub"
+  "${ROOT}/common/cpp/include"
+)
+target_link_libraries(thread_tests PRIVATE Threads::Threads)
 
 # Runs a raw float file through the suppressor the way the capture chain does,
 # for measuring Strongest offline: strongest_tool in.f32 out.f32 [strongest]
