@@ -55,29 +55,35 @@ std::pair<int, int> ConversionSize(int frame_width,
 const FlutterDesktopPixelBuffer* FlutterVideoRenderer::CopyPixelBuffer(
     size_t width,
     size_t height) const {
-  mutex_.lock();
-  if (pixel_buffer_.get() && frame_.get()) {
-    // Converting the whole frame on the raster thread is what made a small
-    // tile of a high-resolution stream lag, so convert at the drawn size.
-    auto [out_width, out_height] =
-        ConversionSize(frame_->width(), frame_->height(), width, height);
-    size_t buffer_size = size_t(out_width) * size_t(out_height) * (32 >> 3);
-    if (buffer_size > rgb_capacity_) {
-      rgb_buffer_.reset(new uint8_t[buffer_size]);
-      rgb_capacity_ = buffer_size;
-    }
-    pixel_buffer_->width = out_width;
-    pixel_buffer_->height = out_height;
-
-    frame_->ConvertToARGB(RTCVideoFrame::Type::kABGR, rgb_buffer_.get(), 0,
-                          out_width, out_height);
-
-    pixel_buffer_->buffer = rgb_buffer_.get();
-    mutex_.unlock();
-    return pixel_buffer_.get();
+  scoped_refptr<RTCVideoFrame> frame;
+  FlutterDesktopPixelBuffer* pixel_buffer = nullptr;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    frame = frame_;
+    pixel_buffer = pixel_buffer_.get();
   }
-  mutex_.unlock();
-  return nullptr;
+  if (!pixel_buffer || !frame.get()) {
+    return nullptr;
+  }
+
+  // Converting the whole frame on the raster thread is what made a small
+  // tile of a high-resolution stream lag, so convert at the drawn size.
+  std::lock_guard<std::mutex> convert_lock(convert_mutex_);
+  auto [out_width, out_height] =
+      ConversionSize(frame->width(), frame->height(), width, height);
+  size_t buffer_size = size_t(out_width) * size_t(out_height) * (32 >> 3);
+  if (buffer_size > rgb_capacity_) {
+    rgb_buffer_.reset(new uint8_t[buffer_size]);
+    rgb_capacity_ = buffer_size;
+  }
+  pixel_buffer->width = out_width;
+  pixel_buffer->height = out_height;
+
+  frame->ConvertToARGB(RTCVideoFrame::Type::kABGR, rgb_buffer_.get(), 0,
+                       out_width, out_height);
+
+  pixel_buffer->buffer = rgb_buffer_.get();
+  return pixel_buffer;
 }
 
 void FlutterVideoRenderer::OnFrame(scoped_refptr<RTCVideoFrame> frame) {
@@ -119,14 +125,16 @@ void FlutterVideoRenderer::OnFrame(scoped_refptr<RTCVideoFrame> frame) {
 
     last_frame_size_ = {(size_t)frame->width(), (size_t)frame->height()};
   }
-  if (min_frame_interval_.count() > 0) {
+  const std::chrono::microseconds min_interval = min_frame_interval_;
+  if (min_interval.count() > 0) {
     const auto now = std::chrono::steady_clock::now();
-    if (now - last_accepted_ < min_frame_interval_) return;
+    if (now - last_accepted_ < min_interval) return;
     last_accepted_ = now;
   }
-  mutex_.lock();
-  frame_ = frame;
-  mutex_.unlock();
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    frame_ = frame;
+  }
   registrar_->MarkTextureFrameAvailable(texture_id_);
 }
 

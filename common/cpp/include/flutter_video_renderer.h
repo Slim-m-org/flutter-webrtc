@@ -7,6 +7,7 @@
 #include "rtc_video_frame.h"
 #include "rtc_video_renderer.h"
 
+#include <atomic>
 #include <chrono>
 #include <mutex>
 
@@ -53,7 +54,9 @@ class FlutterVideoRenderer
   };
   FrameSize last_frame_size_ = {0, 0};
   bool first_frame_rendered = false;
-  std::chrono::microseconds min_frame_interval_{0};
+  // Set from the platform thread while frames are arriving.
+  std::atomic<std::chrono::microseconds> min_frame_interval_{
+      std::chrono::microseconds(0)};
   std::chrono::steady_clock::time_point last_accepted_{};
   TextureRegistrar* registrar_ = nullptr;
   std::unique_ptr<EventChannelProxy> event_channel_;
@@ -64,7 +67,10 @@ class FlutterVideoRenderer
   std::shared_ptr<FlutterDesktopPixelBuffer> pixel_buffer_;
   mutable std::shared_ptr<uint8_t[]> rgb_buffer_;
   mutable size_t rgb_capacity_ = 0;
+  // Guards `frame_` and `pixel_buffer_`, and is never held across a conversion.
   mutable std::mutex mutex_;
+  // Serializes conversions, which own `rgb_buffer_`.
+  mutable std::mutex convert_mutex_;
   RTCVideoFrame::VideoRotation rotation_ = RTCVideoFrame::kVideoRotation_0;
 };
 
