@@ -53,7 +53,10 @@ int main(int argc, char** argv) {
   tuning.onset.release_frames = EnvInt("COVER_RELEASE", tuning.onset.release_frames);
   suppressor.SetStrongestTuning(tuning);
   suppressor.Configure(true);
-  if (strongest) suppressor.ConfigureStrongest(true);
+  if (strongest) {
+    suppressor.ConfigureStrongest(true);
+    suppressor.WaitForStrongestModel();
+  }
 
   std::vector<float> frame(480);
   long frames = 0;

@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.10)
 project(flutter_webrtc_native_tests LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
+find_package(Threads REQUIRED)
 
 get_filename_component(ROOT "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
 include("${ROOT}/third_party/rnnoise/CMakeLists.txt")
@@ -9,6 +10,7 @@ include("${ROOT}/third_party/dfn/CMakeLists.txt")
 add_executable(native_tests
   strong_noise_suppression_test.cc
   strongest_test.cc
+  strongest_model_test.cc
   input_gate_vad_test.cc
   input_gate_meter_test.cc
   input_gate_lookahead_test.cc
@@ -32,13 +34,19 @@ target_include_directories(native_tests PRIVATE
   "${ROOT}/common/cpp/include"
   "${ROOT}/linux/flutter/include"
 )
-target_link_libraries(native_tests PRIVATE slimm_rnnoise)
+target_link_libraries(native_tests PRIVATE slimm_rnnoise Threads::Threads)
 if(TARGET slimm_dfn)
   target_link_libraries(native_tests PRIVATE slimm_dfn)
 endif()
 
+# GNU ld, gold and lld wrap a symbol, so these cases see which thread creates and frees the model.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET slimm_dfn)
+  target_sources(native_tests PRIVATE strongest_model_threads_test.cc)
+  target_link_options(native_tests PRIVATE
+    -Wl,--wrap=slimm_dfn_create -Wl,--wrap=slimm_dfn_free)
+endif()
+
 # Apart from native_tests, which replaces operator new as -fsanitize=thread does.
-find_package(Threads REQUIRED)
 add_executable(thread_tests
   locked_map_test.cc
   serial_executor_test.cc
@@ -62,7 +70,7 @@ add_executable(strongest_tool strongest_tool.cc
   "${ROOT}/common/cpp/src/flutter_rate_converter.cc"
 )
 target_include_directories(strongest_tool PRIVATE "${ROOT}/common/cpp/include")
-target_link_libraries(strongest_tool PRIVATE slimm_rnnoise)
+target_link_libraries(strongest_tool PRIVATE slimm_rnnoise Threads::Threads)
 if(TARGET slimm_dfn)
   target_link_libraries(strongest_tool PRIVATE slimm_dfn)
 endif()

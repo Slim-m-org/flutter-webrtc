@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <future>
 #include <mutex>
 
 #include "rnnoise.h"
@@ -81,7 +82,11 @@ NoiseSuppressor* NoiseSuppressor::Instance() {
 
 NoiseSuppressor::NoiseSuppressor() = default;
 
-NoiseSuppressor::~NoiseSuppressor() { delete pending_.exchange(nullptr); }
+NoiseSuppressor::~NoiseSuppressor() {
+  worker_.Stop();
+  delete pending_.exchange(nullptr);
+  delete retired_.exchange(nullptr);
+}
 
 void NoiseSuppressor::ConfigureStrongest(bool enabled) {
   std::lock_guard<std::mutex> lock(load_mutex_);
@@ -91,33 +96,70 @@ void NoiseSuppressor::ConfigureStrongest(bool enabled) {
     model_failed_.store(false);
     return;
   }
-  if (pending_.load() != nullptr || model_held_.load() || model_failed_.load()) {
+  StartLoad();
+}
+
+void NoiseSuppressor::WaitForStrongestModel() {
+  for (;;) {
+    auto done = std::make_shared<std::promise<void>>();
+    std::future<void> finished = done->get_future();
+    if (!worker_.Post([done = std::move(done)] { done->set_value(); })) return;
+    finished.wait();
+    // A task that ran before the marker may have queued the load behind it.
+    std::lock_guard<std::mutex> lock(load_mutex_);
+    if (!loading_) return;
+  }
+}
+
+void NoiseSuppressor::StartLoad() {
+  if (!strongest_.load() || loading_ || model_held_.load() ||
+      model_failed_.load() || pending_.load() != nullptr) {
     return;
   }
+  loading_ = true;
+  worker_.Post([this, params = tuning_.model, allow = tuning_.allow_model] {
+    LoadModel(params, allow);
+  });
+}
+
+void NoiseSuppressor::LoadModel(const DeepFilter::Params& params,
+                                bool allow_model) {
   std::unique_ptr<DeepFilter> loaded =
-      tuning_.allow_model ? DeepFilter::Load(tuning_.model) : nullptr;
+      allow_model ? DeepFilter::Load(params) : nullptr;
+  std::lock_guard<std::mutex> lock(load_mutex_);
+  loading_ = false;
+  if (!strongest_.load()) return;
   if (loaded == nullptr) {
     model_failed_.store(true);
     return;
   }
-  delete pending_.exchange(loaded.release());
+  pending_.store(loaded.release());
+}
+
+// Frees what the audio thread handed back, then loads again if Strongest was
+// asked for while that was going on.
+void NoiseSuppressor::Settle() {
+  delete retired_.exchange(nullptr);
+  std::lock_guard<std::mutex> lock(load_mutex_);
+  model_held_.store(false);
+  StartLoad();
 }
 
 void NoiseSuppressor::UpdateModel() {
   if (!strongest_.load()) {
-    if (model_ != nullptr) DropModel(false);
+    if (model_ != nullptr) RetireModel(false);
     return;
   }
   if (model_ != nullptr || pending_.load() == nullptr) return;
   model_held_.store(true);
   model_.reset(pending_.exchange(nullptr));
-  if (model_ == nullptr) model_held_.store(false);
+  if (model_ == nullptr) worker_.Post([this] { Settle(); });
 }
 
-void NoiseSuppressor::DropModel(bool failed) {
-  model_.reset();
-  model_held_.store(false);
+void NoiseSuppressor::RetireModel(bool failed) {
+  retired_.store(model_.release());
   if (failed) model_failed_.store(true);
+  worker_.Post([this] { Settle(); });
 }
 
 // Allocates only when the capture rate changes.
@@ -218,7 +260,7 @@ float NoiseSuppressor::Process(float* buffer, int num_frames) {
   DeepFilter* deep = model_.get();
   channel_->deep_failed = false;
   const float probability = ProcessChannel(*channel_, buffer, num_frames, deep);
-  if (channel_->deep_failed) DropModel(true);
+  if (channel_->deep_failed) RetireModel(true);
   strongest_active_.store(deep != nullptr && !channel_->deep_failed);
   return probability;
 }

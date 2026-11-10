@@ -102,6 +102,7 @@ TEST(strongest_runs_deep_filter_and_removes_more_than_strong) {
 
   NoiseSuppressor strongest;
   strongest.ConfigureStrongest(true);
+  strongest.WaitForStrongestModel();
   std::vector<float> b = noise;
   Run(strongest, b);
   CHECK(strongest.Active());
@@ -122,6 +123,7 @@ TEST(strongest_without_the_model_is_exactly_strong) {
   tuning.allow_model = false;
   fallback.SetStrongestTuning(tuning);
   fallback.ConfigureStrongest(true);
+  fallback.WaitForStrongestModel();
   std::vector<float> b = noise;
   Run(fallback, b);
   CHECK(fallback.Active());
@@ -132,10 +134,12 @@ TEST(strongest_without_the_model_is_exactly_strong) {
 TEST(strongest_follows_the_switch) {
   NoiseSuppressor suppressor;
   suppressor.ConfigureStrongest(true);
+  suppressor.WaitForStrongestModel();
   CHECK(suppressor.StrongestEnabled());
   std::vector<float> frame = WhiteNoise(kFrame, 300.0f, 1);
   for (int i = 0; i < 60; ++i) suppressor.Process(frame.data(), kFrame);
   CHECK(suppressor.Active());
+  CHECK(suppressor.StrongestActive() == DeepFilter::Compiled());
   suppressor.ConfigureStrongest(false);
   suppressor.Configure(false);
   suppressor.Process(frame.data(), kFrame);

@@ -29,6 +29,9 @@ It checks that the prebuilt libwebrtc is only used when it hashes to the `sha256
 `thread_tests` holds the thread-safety helpers' cases, apart from the rest so it can be built with a race detector.
 A missing lock only shows under one, so also configure a second build directory with `-DCMAKE_CXX_COMPILER=clang++ -DCMAKE_CXX_FLAGS=-fsanitize=thread` and build `--target thread_tests`.
 
+On Linux `native_tests` also wraps the DeepFilterNet create and free calls at link time (`strongest_model_threads_test.cc`), to check that neither the platform thread nor the audio thread loads or frees the model.
+The Windows linker has no `--wrap`, so those cases are Linux only.
+
 `portal_guard_tests` runs the Linux portal session guard on a private D-Bus session bus.
 It is built when glib is found, and prints `skip` when there is no `dbus-daemon`.
 

@@ -8,6 +8,7 @@
 #include "flutter_deep_filter.h"
 #include "flutter_onset_cover.h"
 #include "flutter_rate_converter.h"
+#include "serial_executor.h"
 
 struct DenoiseState;
 
@@ -52,11 +53,17 @@ class NoiseSuppressor {
   void Configure(bool enabled) { enabled_.store(enabled); }
   bool Enabled() const { return enabled_.load(); }
 
-  // Turning Strongest on loads the model on the calling thread, which takes
-  // tens of milliseconds, so call it off the audio thread. It also makes
-  // rnnoise run. Calling it again while on is free.
+  // Turning Strongest on loads the model on a worker thread, which takes tens
+  // of milliseconds, so rnnoise alone runs until a frame finds it ready. The
+  // worker also frees it once the audio thread lets go, so neither thread
+  // waits on the model. It also makes rnnoise run. Calling it again while on
+  // is free.
   void ConfigureStrongest(bool enabled);
   bool StrongestEnabled() const { return strongest_.load(); }
+
+  // Returns once the worker has finished what ConfigureStrongest asked for,
+  // for tests and offline tools that need the model from the first frame.
+  void WaitForStrongestModel();
 
   // Set before ConfigureStrongest(true); for tests and tuning.
   void SetStrongestTuning(const StrongestTuning& tuning) { tuning_ = tuning; }
@@ -84,17 +91,26 @@ class NoiseSuppressor {
                        DeepFilter* deep);
   float ProcessStrongest(Channel& channel, DeepFilter& deep, float* out);
   void UpdateModel();
-  void DropModel(bool failed);
+  void RetireModel(bool failed);
+  void StartLoad();
+  void LoadModel(const DeepFilter::Params& params, bool allow_model);
+  void Settle();
 
   std::atomic<bool> enabled_{false};
   std::atomic<bool> active_{false};
   std::atomic<bool> strongest_{false};
   std::atomic<bool> strongest_active_{false};
-  // Loaded on the platform thread, taken over by the audio thread.
+  // Loaded on the worker, taken over by the audio thread.
   std::atomic<DeepFilter*> pending_{nullptr};
+  // Handed back by the audio thread, freed on the worker. A model is only
+  // loaded after the last one was settled, so this never holds two.
+  std::atomic<DeepFilter*> retired_{nullptr};
+  // True from the audio thread taking a model until the worker has settled it.
   std::atomic<bool> model_held_{false};
   std::atomic<bool> model_failed_{false};
   std::mutex load_mutex_;
+  // Guarded by load_mutex_.
+  bool loading_ = false;
   StrongestTuning tuning_;
 
   // Only touched on the audio thread.
@@ -102,6 +118,9 @@ class NoiseSuppressor {
   std::unique_ptr<Channel> channel_;
   int rate_hz_ = 0;
   bool was_active_ = false;
+
+  // Last, so it stops before anything its tasks touch.
+  SerialExecutor worker_;
 };
 
 }  // namespace flutter_webrtc_plugin
