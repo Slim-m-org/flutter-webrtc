@@ -39,7 +39,7 @@ void RenderLimiter::Apply(float* buffer, int count, float boost) {
 }
 
 void RenderLimiter::Initialize(int /*sample_rate_hz*/, int num_channels) {
-  channels_.store(std::max(1, num_channels));
+  channels_.store((std::max)(1, num_channels));
 }
 
 void RenderLimiter::Process(int num_bands, int num_frames,
@@ -47,7 +47,7 @@ void RenderLimiter::Process(int num_bands, int num_frames,
   if (buffer == nullptr || num_frames <= 0) return;
   const float boost = boost_.load();
   // libwebrtc hands over channel 0 only; the channels sit one after another in its buffer.
-  const int stride = num_frames * std::max(1, num_bands);
+  const int stride = num_frames * (std::max)(1, num_bands);
   for (int c = 0; c < channels_.load(); ++c) {
     Apply(buffer + c * stride, stride, boost);
   }

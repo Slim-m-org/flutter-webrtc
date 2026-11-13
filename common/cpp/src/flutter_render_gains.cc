@@ -23,7 +23,7 @@ double RenderGains::GainOf(const std::string& track_id) const {
 
 double RenderGains::Boost(const std::vector<std::string>& live) const {
   double boost = 1.0;
-  for (const auto& id : live) boost = std::max(boost, GainOf(id));
+  for (const auto& id : live) boost = (std::max)(boost, GainOf(id));
   return boost;
 }
 
