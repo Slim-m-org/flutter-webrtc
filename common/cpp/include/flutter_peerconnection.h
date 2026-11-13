@@ -13,6 +13,7 @@ namespace flutter_webrtc_plugin {
 
 class FlutterPeerConnectionObserver : public RTCPeerConnectionObserver {
  public:
+  ~FlutterPeerConnectionObserver();
   FlutterPeerConnectionObserver(FlutterWebRTCBase* base,
                                 scoped_refptr<RTCPeerConnection> peerconnection,
                                 BinaryMessenger* messenger,
@@ -44,6 +45,9 @@ class FlutterPeerConnectionObserver : public RTCPeerConnectionObserver {
   void RemoveStreamForId(const std::string& id);
 
  private:
+  void RememberRemoteTrack(scoped_refptr<RTCMediaTrack> track);
+  void ForgetRemoteTrack(const std::string& id);
+
   std::unique_ptr<EventChannelProxy> event_channel_;
   scoped_refptr<RTCPeerConnection> peerconnection_;
   // Written on libwebrtc's signaling thread, read on the platform thread.

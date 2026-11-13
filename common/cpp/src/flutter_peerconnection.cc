@@ -5,6 +5,7 @@
 #include "base/scoped_ref_ptr.h"
 #include "flutter_data_channel.h"
 #include "flutter_frame_capturer.h"
+#include "flutter_render_mix.h"
 #include "rtc_dtmf_sender.h"
 #include "rtc_rtp_parameters.h"
 
@@ -1275,6 +1276,27 @@ void FlutterPeerConnection::RemoveTrack(
   result->Success(EncodableValue(map));
 }
 
+FlutterPeerConnectionObserver::~FlutterPeerConnectionObserver() {
+  for (const auto& track : remote_tracks_.Values()) {
+    RenderMix::Instance()->TrackRemoved(track->id().std_string());
+  }
+}
+
+void FlutterPeerConnectionObserver::RememberRemoteTrack(
+    scoped_refptr<RTCMediaTrack> track) {
+  const std::string id = track->id().std_string();
+  remote_tracks_.Set(id, track);
+  if (track->kind().std_string() == "audio") {
+    RenderMix::Instance()->TrackAdded(
+        id, scoped_refptr<RTCAudioTrack>(static_cast<RTCAudioTrack*>(track.get())));
+  }
+}
+
+void FlutterPeerConnectionObserver::ForgetRemoteTrack(const std::string& id) {
+  remote_tracks_.Erase(id);
+  RenderMix::Instance()->TrackRemoved(id);
+}
+
 FlutterPeerConnectionObserver::FlutterPeerConnectionObserver(
     FlutterWebRTCBase* base,
     scoped_refptr<RTCPeerConnection> peerconnection,
@@ -1397,7 +1419,7 @@ void FlutterPeerConnectionObserver::OnAddTrack(
     scoped_refptr<RTCRtpReceiver> receiver) {
   auto track = receiver->track();
   if (track.get()) {
-    remote_tracks_.Set(track->id().std_string(), track);
+    RememberRemoteTrack(track);
   }
 
   std::vector<scoped_refptr<RTCMediaStream>> mediaStreams;
@@ -1430,7 +1452,7 @@ void FlutterPeerConnectionObserver::OnTrack(
   auto receiver = transceiver->receiver();
   auto track = receiver->track();
   if (track.get()) {
-    remote_tracks_.Set(track->id().std_string(), track);
+    RememberRemoteTrack(track);
   }
   EncodableMap params;
   EncodableList streams_info;
@@ -1454,7 +1476,7 @@ void FlutterPeerConnectionObserver::OnRemoveTrack(
     scoped_refptr<RTCRtpReceiver> receiver) {
   auto track = receiver->track();
   if (track.get()) {
-    remote_tracks_.Erase(track->id().std_string());
+    ForgetRemoteTrack(track->id().std_string());
   }
 
   EncodableMap params;

@@ -3,6 +3,7 @@
 #include "flutter_data_channel.h"
 #include "flutter_input_gate.h"
 #include "flutter_noise_suppressor.h"
+#include "flutter_render_mix.h"
 #include "flutter_voice_dynamics.h"
 
 #include "flutter_webrtc/flutter_web_r_t_c_plugin.h"
@@ -642,8 +643,9 @@ void FlutterWebRTC::HandleMethodCall(
       return;
     }
 
-    auto audioTrack = static_cast<RTCAudioTrack*>(track);
-    audioTrack->SetVolume(volume.value());
+    if (!RenderMix::Instance()->SetGain(trackId, volume.value())) {
+      static_cast<RTCAudioTrack*>(track)->SetVolume(volume.value());
+    }
 
     result->Success();
   } else if (method_call.method_name().compare("getLocalDescription") == 0) {

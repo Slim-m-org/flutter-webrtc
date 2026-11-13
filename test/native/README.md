@@ -1,7 +1,7 @@
 # Native tests
 
 Standalone C++ tests for the capture chain stages (strong noise suppression,
-the rate converter, the input gate with its lookahead, the burst checks over the whole chain) and the screen share size limit.
+the rate converter, the input gate with its lookahead, the burst checks over the whole chain) the screen share size limit, and the render limiter that carries a per-person volume above 100% without clipping.
 They also cover the small thread-safety helpers: the loopback session, the serial executor, the locked map and the request coalescer.
 They stub the libwebrtc headers, so nothing is downloaded.
 

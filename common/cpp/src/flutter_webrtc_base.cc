@@ -2,6 +2,7 @@
 
 #include "flutter_data_channel.h"
 #include "flutter_capture_chain.h"
+#include "flutter_render_limiter.h"
 #include "audio_ducking_opt_out.h"
 #include "audio_server_probe.h"
 #ifdef _WIN32
@@ -107,6 +108,7 @@ bool FlutterWebRTCBase::EnsureWebRTCInitialized(bool enable_warp,
   audio_processing_ = factory_->GetAudioProcessing();
   if (audio_processing_) {
     audio_processing_->SetCapturePostProcessing(CaptureChain::Instance());
+    audio_processing_->SetRenderPreProcessing(RenderLimiter::Instance());
   }
 
   audio_device_->OnDeviceChange([&] {

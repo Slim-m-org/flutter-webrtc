@@ -17,6 +17,7 @@ add_executable(native_tests
   capture_chain_burst_test.cc
   voice_leveler_test.cc
   frame_fit_test.cc
+  render_limiter_test.cc
   shared_state_test.cc
   check_registry.cc
   main.cc
@@ -28,6 +29,8 @@ add_executable(native_tests
   "${ROOT}/common/cpp/src/flutter_voice_dynamics.cc"
   "${ROOT}/common/cpp/src/flutter_capture_chain.cc"
   "${ROOT}/common/cpp/src/flutter_frame_fit.cc"
+  "${ROOT}/common/cpp/src/flutter_render_limiter.cc"
+  "${ROOT}/common/cpp/src/flutter_render_gains.cc"
 )
 target_include_directories(native_tests PRIVATE
   "${CMAKE_CURRENT_LIST_DIR}/stub"
