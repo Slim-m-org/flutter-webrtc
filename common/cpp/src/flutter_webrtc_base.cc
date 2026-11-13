@@ -3,6 +3,7 @@
 #include "flutter_data_channel.h"
 #include "flutter_capture_chain.h"
 #include "audio_ducking_opt_out.h"
+#include "audio_server_probe.h"
 #ifdef _WIN32
 #include "default_audio_endpoint.h"
 #endif
@@ -54,10 +55,13 @@ FlutterWebRTCBase::~FlutterWebRTCBase() {
   }
 }
 
-void FlutterWebRTCBase::EnsureWebRTCInitialized(bool enable_warp,
+bool FlutterWebRTCBase::EnsureWebRTCInitialized(bool enable_warp,
                                                 bool zero_playout_delay) {
   if (webrtc_initialized_) {
-    return;
+    return true;
+  }
+  if (!AudioServerReachable()) {
+    return false;
   }
   webrtc_initialized_ = true;
   warp_enabled_ = enable_warp;
@@ -111,6 +115,7 @@ void FlutterWebRTCBase::EnsureWebRTCInitialized(bool enable_warp,
     info[EncodableValue("event")] = "onDeviceChange";
     event_channel()->Success(EncodableValue(info), false);
   });
+  return true;
 }
 
 EventChannelProxy* FlutterWebRTCBase::event_channel() {

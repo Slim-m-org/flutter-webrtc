@@ -55,11 +55,20 @@ class FlutterWebRTCBase {
   // it is needed, applying the process global field trials that the
   // `initialize()` options ask for. Field trials are read when the factory is
   // created, so only the first call decides them; later calls are no-ops.
-  void EnsureWebRTCInitialized(bool enable_warp = false,
+  // Returns false, leaving WebRTC uninitialized, when the platform audio
+  // server is not running; a later call tries again.
+  bool EnsureWebRTCInitialized(bool enable_warp = false,
                                bool zero_playout_delay = false);
 
+  // The options a Dart initialize() asked for, used by the later calls that
+  // only need the factory to exist.
+  void RememberInitializeOptions(bool enable_warp, bool zero_playout_delay) {
+    requested_warp_ = enable_warp;
+    requested_zero_playout_delay_ = zero_playout_delay;
+  }
+
   virtual scoped_refptr<RTCAudioProcessing> audio_processing() {
-    EnsureWebRTCInitialized();
+    EnsureWebRTCInitialized(requested_warp_, requested_zero_playout_delay_);
     return audio_processing_;
   }
 
@@ -138,6 +147,8 @@ class FlutterWebRTCBase {
   // Whether `enableWARP` was requested; peer connections created afterwards
   // default to DSCP marking. See EnsureWebRTCInitialized().
   bool warp_enabled_ = false;
+  bool requested_warp_ = false;
+  bool requested_zero_playout_delay_ = false;
   scoped_refptr<RTCPeerConnectionFactory> factory_;
   scoped_refptr<RTCAudioDevice> audio_device_;
   std::string playout_guid_;
