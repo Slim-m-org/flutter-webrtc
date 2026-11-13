@@ -10,6 +10,10 @@
 #include <cstdlib>
 #include <stdexcept>
 
+#ifdef __linux__
+#include "screen_session_env.h"
+#endif
+
 #ifdef _WIN32
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -266,6 +270,12 @@ bool FlutterScreenCapture::BuildDesktopSourcesList(const EncodableList& types,
     // Window capture is X11-only in libwebrtc and aborts the process without
     // an X display, so a pure Wayland session lists no windows.
     if (desktop_type == DesktopType::kWindow && !getenv("DISPLAY")) {
+      continue;
+    }
+    // Without X or a Wayland display there is nothing to capture; libwebrtc
+    // would segfault building the list.
+    if (desktop_type == DesktopType::kScreen &&
+        !flutter_webrtc_plugin::PrepareScreenSession()) {
       continue;
     }
 #endif

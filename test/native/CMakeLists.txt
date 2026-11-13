@@ -60,6 +60,9 @@ target_include_directories(thread_tests PRIVATE
   "${ROOT}/common/cpp/include"
 )
 target_link_libraries(thread_tests PRIVATE Threads::Threads)
+if(UNIX)
+  target_sources(thread_tests PRIVATE screen_session_env_test.cc)
+endif()
 
 # Runs a raw float file through the suppressor the way the capture chain does,
 # for measuring Strongest offline: strongest_tool in.f32 out.f32 [strongest]
