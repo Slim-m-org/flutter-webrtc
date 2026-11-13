@@ -177,8 +177,8 @@ bool ApplicationLoopbackCapturer::Start(
 
   // Cache audio format for FeederThread (mix_format_ lives on this thread).
   cached_sample_rate_  = static_cast<int>(mix_format_->nSamplesPerSec);
-  cached_out_channels_ = 1;
-  // Initialise ring buffer: 500 ms of mono int16 samples.
+  cached_out_channels_ = 2;
+  // Initialise ring buffer: 500 ms of interleaved stereo int16 samples.
   {
     const size_t frames_per_20ms =
         static_cast<size_t>(cached_sample_rate_) / 50;
@@ -415,7 +415,7 @@ IAudioClient* ApplicationLoopbackCapturer::TryInitApplicationLoopback() {
 
 // ---------------------------------------------------------------------------
 // CaptureThread
-// Reads WASAPI packets, converts to int16 mono, and writes to the ring
+// Reads WASAPI packets, converts to interleaved stereo int16, and writes to the ring
 // buffer.  It does NOT call CaptureFrame — that is FeederThread's job.
 // This decouples the WASAPI callback timing from the WebRTC audio thread,
 // preventing the AudioSendStream race-checker crash.
@@ -498,8 +498,9 @@ void ApplicationLoopbackCapturer::CaptureThread() {
                 ? extractor(frame_ptr + bytes_per_sample) 
                 : left;
                 
-            // Write to our stereo output buffer
-            conv[f] = static_cast<int16_t>((static_cast<int32_t>(left) + right) / 2);
+            // Keep the two channels apart; the encoder sends them as stereo.
+            conv[f * out_channels]     = left;
+            conv[f * out_channels + 1] = right;
           }
         }
         {
@@ -555,7 +556,7 @@ void ApplicationLoopbackCapturer::FeederThread() {
   HANDLE task = AvSetMmThreadCharacteristicsW(L"Audio", &task_index);
 
   const int    sample_rate     = cached_sample_rate_;
-  const size_t out_channels    = 1;
+  const size_t out_channels    = cached_out_channels_;
 
   // 480 samples = one 10 ms frame at 48 kHz.
   const size_t frames_per_10ms = static_cast<size_t>(sample_rate) / 100;
@@ -564,7 +565,7 @@ void ApplicationLoopbackCapturer::FeederThread() {
   const size_t target_prebuf  = 16 * frames_per_10ms;  // 160 ms startup fill
   const size_t max_buffered   = 20 * frames_per_10ms;  // 200 ms hard cap
 
-  // Stereo ring-read buffer
+  // Interleaved ring-read buffer
   std::vector<int16_t> feed(frames_per_10ms * out_channels, int16_t{0});
 
   // true until the ring has at least 160 ms buffered.
