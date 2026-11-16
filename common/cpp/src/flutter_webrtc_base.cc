@@ -438,6 +438,18 @@ bool FlutterWebRTCBase::ParseRTCConfiguration(const EncodableMap& map,
       conf.rtcp_mux_policy = RtcpMuxPolicy::kRtcpMuxPolicyRequire;
   }
 
+  // tcpCandidatePolicy (private api, the same keys Android and Darwin read)
+  it = map.find(EncodableValue("tcpCandidatePolicy"));
+  if (it != map.end() && TypeIs<std::string>(it->second)) {
+    std::string v = GetValue<std::string>(it->second);
+    if (v == "enabled")
+      conf.tcp_candidate_policy =
+          TcpCandidatePolicy::kTcpCandidatePolicyEnabled;
+    else if (v == "disabled")
+      conf.tcp_candidate_policy =
+          TcpCandidatePolicy::kTcpCandidatePolicyDisabled;
+  }
+
   // FIXME: peerIdentity of type DOMString (public API)
   // FIXME: certificates of type sequence<RTCCertificate> (public API)
   // iceCandidatePoolSize of type unsigned short, defaulting to 0
