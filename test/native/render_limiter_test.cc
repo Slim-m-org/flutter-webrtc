@@ -102,6 +102,38 @@ TEST(RenderLimiter_ProcessShapesEveryChannelOfTheMix) {
   RenderLimiter::Instance()->Initialize(kRate, 1);
 }
 
+// As libwebrtc calls it: num_frames is each channel's full-band length, 160 per band at 16, 32 and 48 kHz.
+TEST(RenderLimiter_ProcessShapesTheWholeMixAndNothingPastItAtEveryBandCount) {
+  constexpr float kGuardValue = 20000.0f;
+  constexpr float kBoost = 3.0f;
+  for (int bands = 1; bands <= 3; ++bands) {
+    for (int channels = 1; channels <= 2; ++channels) {
+      const int frames = 160 * bands;
+      const int size = frames * channels;
+      std::vector<float> mix;
+      for (int c = 0; c < channels; ++c) {
+        auto channel = Sine((0.5f + 0.2f * c) * kFullScale, frames);
+        mix.insert(mix.end(), channel.begin(), channel.end());
+      }
+      auto expected = mix;
+      RenderLimiter::Apply(expected.data(), size, kBoost);
+      mix.resize(size + 3 * size, kGuardValue);
+      RenderLimiter::Instance()->Initialize(frames * 100, channels);
+      RenderLimiter::Instance()->SetBoost(kBoost);
+      RenderLimiter::Instance()->Process(bands, frames, 160 * bands, mix.data());
+      const bool shaped = std::equal(expected.begin(), expected.end(), mix.begin());
+      const bool past_untouched = std::all_of(
+          mix.begin() + size, mix.end(), [](float x) { return x == kGuardValue; });
+      std::printf("  %d band(s), %d channel(s): mix shaped %d, past it untouched %d\n",
+                  bands, channels, shaped, past_untouched);
+      CHECK(shaped);
+      CHECK(past_untouched);
+    }
+  }
+  RenderLimiter::Instance()->SetBoost(1.0f);
+  RenderLimiter::Instance()->Initialize(kRate, 1);
+}
+
 TEST(RenderGains_NobodyAboveFullLeavesLibwebrtcAtTheRequestedVolume) {
   RenderGains gains;
   gains.Set("a", 0.5);

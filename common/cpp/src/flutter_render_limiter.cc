@@ -42,14 +42,14 @@ void RenderLimiter::Initialize(int /*sample_rate_hz*/, int num_channels) {
   channels_.store((std::max)(1, num_channels));
 }
 
-void RenderLimiter::Process(int num_bands, int num_frames,
+void RenderLimiter::Process(int /*num_bands*/, int num_frames,
                             int /*buffer_size*/, float* buffer) {
   if (buffer == nullptr || num_frames <= 0) return;
   const float boost = boost_.load();
-  // libwebrtc hands over channel 0 only; the channels sit one after another in its buffer.
-  const int stride = num_frames * (std::max)(1, num_bands);
-  for (int c = 0; c < channels_.load(); ++c) {
-    Apply(buffer + c * stride, stride, boost);
+  const int channels = channels_.load();
+  // Channel 0 of the full-band buffer: each channel is num_frames long at any band count.
+  for (int c = 0; c < channels; ++c) {
+    Apply(buffer + static_cast<size_t>(c) * num_frames, num_frames, boost);
   }
 }
 
