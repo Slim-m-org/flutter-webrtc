@@ -7,7 +7,8 @@ namespace flutter_webrtc_plugin {
 
 // The audio processing module takes a single capture post-processor, so this
 // runs every microphone stage in order: the optional strong noise
-// suppression, the noise gate, then the dynamics.
+// suppression, the noise gate, then the dynamics. The mic sample tap reads
+// the frame before all of them.
 class CaptureChain : public libwebrtc::RTCAudioProcessing::CustomProcessing {
  public:
   // Never freed, for the reason InputGate::Instance gives.

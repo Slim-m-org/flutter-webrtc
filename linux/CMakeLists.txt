@@ -22,6 +22,7 @@ add_library(${PLUGIN_NAME} SHARED
   "../common/cpp/src/flutter_data_packet_cryptor.cc"
   "../common/cpp/src/flutter_frame_cryptor.cc"
   "../common/cpp/src/flutter_capture_chain.cc"
+  "../common/cpp/src/flutter_mic_sample_tap.cc"
   "../common/cpp/src/flutter_input_gate.cc"
   "../common/cpp/src/flutter_noise_suppressor.cc"
   "../common/cpp/src/flutter_deep_filter.cc"

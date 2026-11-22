@@ -2,6 +2,7 @@
 #include "portal_stream_watch.h"
 #include "flutter_data_channel.h"
 #include "flutter_input_gate.h"
+#include "flutter_mic_sample_tap.h"
 #include "flutter_noise_suppressor.h"
 #include "flutter_render_mix.h"
 #include "flutter_voice_dynamics.h"
@@ -588,6 +589,34 @@ void FlutterWebRTC::HandleMethodCall(
         findBoolean(params, "strongNoiseSuppression"));
     NoiseSuppressor::Instance()->ConfigureStrongest(
         findBoolean(params, "strongestNoiseSuppression"));
+    result->Success();
+  } else if (method_call.method_name().compare("startMicSample") == 0) {
+    const EncodableMap params =
+        method_call.arguments()
+            ? GetValue<EncodableMap>(*method_call.arguments())
+            : EncodableMap();
+    const int seconds = findInt(params, "seconds");
+    MicSampleTap::Instance()->Start(seconds > 0 ? seconds : 30);
+    result->Success();
+  } else if (method_call.method_name().compare("takeMicSample") == 0) {
+    MicSampleTap* tap = MicSampleTap::Instance();
+    const std::vector<int16_t> samples = tap->Take();
+    std::vector<uint8_t> bytes(samples.size() * 2);
+    for (size_t i = 0; i < samples.size(); ++i) {
+      const uint16_t v = static_cast<uint16_t>(samples[i]);
+      bytes[2 * i] = static_cast<uint8_t>(v & 0xff);
+      bytes[2 * i + 1] = static_cast<uint8_t>(v >> 8);
+    }
+    EncodableMap map;
+    map[EncodableValue("pcm")] = EncodableValue(std::move(bytes));
+    map[EncodableValue("rateHz")] =
+        EncodableValue(static_cast<int32_t>(MicSampleTap::kRateHz));
+    map[EncodableValue("skippedFrames")] =
+        EncodableValue(static_cast<int32_t>(tap->SkippedFrames()));
+    map[EncodableValue("full")] = EncodableValue(tap->Full());
+    result->Success(EncodableValue(map));
+  } else if (method_call.method_name().compare("stopMicSample") == 0) {
+    MicSampleTap::Instance()->Stop();
     result->Success();
   } else if (method_call.method_name().compare("getInputGate") == 0) {
     InputGate* gate = InputGate::Instance();

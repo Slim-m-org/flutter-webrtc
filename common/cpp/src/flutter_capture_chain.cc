@@ -1,6 +1,7 @@
 #include "flutter_capture_chain.h"
 
 #include "flutter_input_gate.h"
+#include "flutter_mic_sample_tap.h"
 #include "flutter_noise_suppressor.h"
 #include "flutter_voice_dynamics.h"
 
@@ -43,6 +44,7 @@ void CaptureChain::Process(int /*num_bands*/, int num_frames,
                            float* buffer) {
   if (buffer == nullptr || num_frames <= 0) return;
   ScrubNonFinite(buffer, num_frames);
+  MicSampleTap::Instance()->Feed(buffer, num_frames);
   const float speech =
       NoiseSuppressor::Instance()->Process(buffer, num_frames);
   InputGate::Instance()->ProcessWithSpeech(num_frames, buffer, speech);
