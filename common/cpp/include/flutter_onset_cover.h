@@ -22,8 +22,9 @@ class OnsetCover {
     int cover_frames = 20;
     int release_frames = 10;
     // The share of rnnoise's output kept while speech goes on after the
-    // cover, so a word DeepFilterNet keeps turning down stays audible.
-    float speaking_weight = 0.5f;
+    // cover, so a word DeepFilterNet keeps turning down stays audible. All of
+    // it: at half, speech came out 2 dB quieter than Strong's on the real client.
+    float speaking_weight = 1.0f;
   };
 
   void Reset() { *this = OnsetCover(); }

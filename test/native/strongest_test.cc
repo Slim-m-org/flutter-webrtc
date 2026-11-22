@@ -66,18 +66,20 @@ TEST(onset_cover_ignores_a_click_shorter_than_a_word) {
   CHECK(peak == 0.0f);
 }
 
-TEST(onset_cover_keeps_part_of_rnnoise_while_the_word_goes_on) {
+TEST(onset_cover_keeps_rnnoise_while_the_word_goes_on_so_speech_holds_strongs_level) {
   OnsetCover cover;
   const OnsetCover::Tuning tuning;
   Feed(cover, tuning, 0.0f, 100);
   Feed(cover, tuning, 0.9f, tuning.confirm_frames + tuning.cover_frames);
+  CHECK(tuning.speaking_weight == 1.0f);
   CHECK(Feed(cover, tuning, 0.9f, 50) == tuning.speaking_weight);
   CHECK(Feed(cover, tuning, 0.0f, tuning.release_frames + 1) == 0.0f);
 }
 
 TEST(onset_cover_does_not_cover_speech_that_follows_speech) {
   OnsetCover cover;
-  const OnsetCover::Tuning tuning;
+  OnsetCover::Tuning tuning;
+  tuning.speaking_weight = 0.5f;
   Feed(cover, tuning, 0.0f, 100);
   Feed(cover, tuning, 0.9f, 40);
   Feed(cover, tuning, 0.0f, tuning.quiet_frames - 5);

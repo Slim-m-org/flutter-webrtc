@@ -4,9 +4,15 @@
 #include <string>
 #include <vector>
 
+#include "flutter_capture_chain.h"
+#include "flutter_input_gate.h"
 #include "flutter_noise_suppressor.h"
+#include "flutter_voice_dynamics.h"
 
+using flutter_webrtc_plugin::CaptureChain;
+using flutter_webrtc_plugin::InputGate;
 using flutter_webrtc_plugin::NoiseSuppressor;
+using flutter_webrtc_plugin::VoiceDynamics;
 
 namespace {
 
@@ -27,6 +33,7 @@ int EnvInt(const char* name, int fallback) {
 // probability the gate would see to out.f32.prob. The tuning comes from the
 // environment: DFN_ATTEN, DFN_MIN_DB, DFN_ERB_DB, DFN_DF_DB, COVER_CONFIRM,
 // COVER_SPEECH, COVER_QUIET_FRAMES, COVER_FRAMES, COVER_RELEASE.
+// CHAIN=1 runs the whole capture chain (suppressor, input gate at -50 dB, leveler) as the client does.
 int main(int argc, char** argv) {
   if (argc < 3) return 2;
   const bool strongest = argc > 3 && std::string(argv[3]) == "strongest";
@@ -36,7 +43,9 @@ int main(int argc, char** argv) {
   FILE* prob = std::fopen(prob_path.c_str(), "wb");
   if (in == nullptr || out == nullptr || prob == nullptr) return 2;
 
-  NoiseSuppressor suppressor;
+  const bool chain = EnvInt("CHAIN", 0) != 0;
+  NoiseSuppressor own;
+  NoiseSuppressor& suppressor = chain ? *NoiseSuppressor::Instance() : own;
   NoiseSuppressor::StrongestTuning tuning;
   tuning.model.atten_lim_db = EnvFloat("DFN_ATTEN", tuning.model.atten_lim_db);
   tuning.model.min_db = EnvFloat("DFN_MIN_DB", tuning.model.min_db);
@@ -57,6 +66,12 @@ int main(int argc, char** argv) {
     suppressor.ConfigureStrongest(true);
     suppressor.WaitForStrongestModel();
   }
+  if (chain) {
+    InputGate::Instance()->Configure(true, -50.0f);
+    VoiceDynamics::Instance()->Configure(true);
+    VoiceDynamics::Instance()->ConfigureLeveler(true);
+    CaptureChain::Instance()->Initialize(48000, 1);
+  }
 
   std::vector<float> frame(480);
   long frames = 0;
@@ -65,7 +80,12 @@ int main(int argc, char** argv) {
   while (std::fread(frame.data(), sizeof(float), 480, in) == 480) {
     for (float& v : frame) v *= 32768.0f;
     const auto start = std::chrono::steady_clock::now();
-    const float p = suppressor.Process(frame.data(), 480);
+    float p = NoiseSuppressor::kNoSpeechProbability;
+    if (chain) {
+      CaptureChain::Instance()->Process(1, 480, 480, frame.data());
+    } else {
+      p = suppressor.Process(frame.data(), 480);
+    }
     seconds += std::chrono::duration<double>(
                    std::chrono::steady_clock::now() - start)
                    .count();

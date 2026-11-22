@@ -70,12 +70,15 @@ endif()
 # Runs a raw float file through the suppressor the way the capture chain does,
 # for measuring Strongest offline: strongest_tool in.f32 out.f32 [strongest]
 add_executable(strongest_tool strongest_tool.cc
+  "${ROOT}/common/cpp/src/flutter_input_gate.cc"
+  "${ROOT}/common/cpp/src/flutter_voice_dynamics.cc"
+  "${ROOT}/common/cpp/src/flutter_capture_chain.cc"
   "${ROOT}/common/cpp/src/flutter_noise_suppressor.cc"
   "${ROOT}/common/cpp/src/flutter_deep_filter.cc"
   "${ROOT}/common/cpp/src/flutter_onset_cover.cc"
   "${ROOT}/common/cpp/src/flutter_rate_converter.cc"
 )
-target_include_directories(strongest_tool PRIVATE "${ROOT}/common/cpp/include")
+target_include_directories(strongest_tool PRIVATE "${ROOT}/common/cpp/include" "${CMAKE_CURRENT_LIST_DIR}/stub")
 target_link_libraries(strongest_tool PRIVATE slimm_rnnoise Threads::Threads)
 if(TARGET slimm_dfn)
   target_link_libraries(strongest_tool PRIVATE slimm_dfn)
