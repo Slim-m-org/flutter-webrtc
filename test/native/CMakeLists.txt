@@ -16,6 +16,7 @@ add_executable(native_tests
   input_gate_lookahead_test.cc
   capture_chain_burst_test.cc
   voice_leveler_test.cc
+  mic_sample_tap_test.cc
   frame_fit_test.cc
   render_limiter_test.cc
   shared_state_test.cc
@@ -28,6 +29,7 @@ add_executable(native_tests
   "${ROOT}/common/cpp/src/flutter_input_gate.cc"
   "${ROOT}/common/cpp/src/flutter_voice_dynamics.cc"
   "${ROOT}/common/cpp/src/flutter_capture_chain.cc"
+  "${ROOT}/common/cpp/src/flutter_mic_sample_tap.cc"
   "${ROOT}/common/cpp/src/flutter_frame_fit.cc"
   "${ROOT}/common/cpp/src/flutter_render_limiter.cc"
   "${ROOT}/common/cpp/src/flutter_render_gains.cc"
