@@ -75,6 +75,7 @@ add_executable(strongest_tool strongest_tool.cc
   "${ROOT}/common/cpp/src/flutter_input_gate.cc"
   "${ROOT}/common/cpp/src/flutter_voice_dynamics.cc"
   "${ROOT}/common/cpp/src/flutter_capture_chain.cc"
+  "${ROOT}/common/cpp/src/flutter_mic_sample_tap.cc"
   "${ROOT}/common/cpp/src/flutter_noise_suppressor.cc"
   "${ROOT}/common/cpp/src/flutter_deep_filter.cc"
   "${ROOT}/common/cpp/src/flutter_onset_cover.cc"
