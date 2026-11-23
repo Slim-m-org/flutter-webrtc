@@ -64,8 +64,6 @@ jobs:
     name: Native tests (Windows)
     runs-on: windows-latest
     timeout-minutes: 45
-    # Nothing here has been built with MSVC yet; drop this once it has run green.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
