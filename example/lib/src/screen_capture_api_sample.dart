@@ -1,8 +1,8 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:flutter_webrtc_example/src/widgets/screen_select_dialog.dart';
+import 'package:material_ui/material_ui.dart';
 
 class ScreenCaptureApiSample extends StatefulWidget {
   static String tag = 'screen_capture_api_sample';

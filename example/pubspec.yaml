@@ -14,6 +14,7 @@ dependencies:
   flutter_background: ^1.0.0
   flutter_webrtc:
     path: ../
+  material_ui: ^1.11.1
   path_provider: ^2.0.2
   # 11.4.0 resolves permission_handler_apple 9.4.10+, which supports Swift Package Manager
   permission_handler: ^11.4.0

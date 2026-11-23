@@ -1,10 +1,10 @@
 import 'dart:core';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_background/flutter_background.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:flutter_webrtc_example/src/widgets/screen_select_dialog.dart';
+import 'package:material_ui/material_ui.dart';
 
 /*
  * getDisplayMedia sample
