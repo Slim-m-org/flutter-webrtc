@@ -1,8 +1,8 @@
-#ifndef TEST_STUB_RTC_AUDIO_PROCESSING_H_
-#define TEST_STUB_RTC_AUDIO_PROCESSING_H_
+#ifndef FLUTTER_WEBRTC_PORTABLE_RTC_AUDIO_PROCESSING_H_
+#define FLUTTER_WEBRTC_PORTABLE_RTC_AUDIO_PROCESSING_H_
 
-// Just the CustomProcessing interface, so the native tests build without
-// downloading libwebrtc.
+// Just the CustomProcessing interface, for the builds that run the capture
+// chain without libwebrtc's C++ wrapper: Android, iOS, the web and the native tests.
 namespace libwebrtc {
 class RTCAudioProcessing {
  public:
@@ -20,4 +20,4 @@ class RTCAudioProcessing {
 };
 }  // namespace libwebrtc
 
-#endif  // TEST_STUB_RTC_AUDIO_PROCESSING_H_
+#endif  // FLUTTER_WEBRTC_PORTABLE_RTC_AUDIO_PROCESSING_H_

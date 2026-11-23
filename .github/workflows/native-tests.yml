@@ -9,6 +9,8 @@ on:
       - "windows/**"
       - "test/native/**"
       - "third_party/**"
+      - "web_capture_chain/**"
+      - "test/web_capture_chain/**"
       - ".github/workflows/native-tests.yml"
   pull_request:
     paths:
@@ -17,6 +19,8 @@ on:
       - "windows/**"
       - "test/native/**"
       - "third_party/**"
+      - "web_capture_chain/**"
+      - "test/web_capture_chain/**"
       - ".github/workflows/native-tests.yml"
   workflow_dispatch:
 
@@ -73,6 +77,23 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build/native-tests -C Release --output-on-failure
+
+  web-capture-chain:
+    name: Web capture chain matches its sources
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # The wasm is committed so an app build needs no Emscripten; a stale one would ship old audio code to browsers.
+      - name: Rebuild
+        run: web_capture_chain/build.sh
+
+      - name: The committed wasm is the one the sources build
+        run: git diff --exit-code -- web_capture_chain/capture_chain.wasm
+
+      - name: The worklet drives the wasm the way a browser does
+        run: node --test test/web_capture_chain/worklet_test.mjs
 
   licenses:
     name: DeepFilterNet crate licenses

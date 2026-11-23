@@ -1,5 +1,8 @@
 #import "AudioManager.h"
 #import "AudioProcessingAdapter.h"
+#if TARGET_OS_IPHONE
+#import "CaptureChainProcessing.h"
+#endif
 
 @implementation AudioManager {
   RTCDefaultAudioProcessingModule* _audioProcessingModule;
@@ -27,6 +30,9 @@
     _renderPreProcessingAdapter = [[AudioProcessingAdapter alloc] init];
     _audioProcessingModule.capturePostProcessingDelegate = _capturePostProcessingAdapter;
     _audioProcessingModule.renderPreProcessingDelegate = _renderPreProcessingAdapter;
+#if TARGET_OS_IPHONE
+    [_capturePostProcessingAdapter addProcessing:[[CaptureChainProcessing alloc] init]];
+#endif
   }
   return self;
 }

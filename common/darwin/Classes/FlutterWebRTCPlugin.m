@@ -17,6 +17,9 @@
 #import "FlutterRTCVideoPlatformViewController.h"
 #endif
 #import "AudioManager.h"
+#if TARGET_OS_IPHONE
+#import "CaptureChainProcessing.h"
+#endif
 
 #import <AVFoundation/AVFoundation.h>
 #import <WebRTC/RTCFieldTrials.h>
@@ -1256,6 +1259,14 @@ static void FlutterWebRTCApplyFieldTrials(void) {
                                    details:nil]);
       }
     }
+#if TARGET_OS_IPHONE
+  } else if ([@"setInputGate" isEqualToString:call.method]) {
+    NSDictionary* argsMap = call.arguments;
+    [CaptureChainProcessing configure:argsMap ?: @{}];
+    result(nil);
+  } else if ([@"getInputGate" isEqualToString:call.method]) {
+    result([CaptureChainProcessing read]);
+#endif
   } else if ([@"setVolume" isEqualToString:call.method]) {
     NSDictionary* argsMap = call.arguments;
     NSString* trackId = argsMap[@"trackId"];

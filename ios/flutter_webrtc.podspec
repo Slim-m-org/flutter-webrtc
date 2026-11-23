@@ -12,15 +12,16 @@ A new flutter plugin project.
   s.license          = { :file => '../LICENSE' }
   s.author           = { 'CloudWebRTC' => 'duanweiwei1982@gmail.com' }
   s.source           = { :path => '.' }
-  s.source_files = 'flutter_webrtc/Sources/flutter_webrtc/**/*.{h,m,mm,cpp}'
+  # capture_chain/ holds the common/cpp capture chain and rnnoise (.c, .cc), linked from the repo root.
+  s.source_files = 'flutter_webrtc/Sources/flutter_webrtc/**/*.{h,m,mm,cpp,cc,c}'
   s.public_header_files = 'flutter_webrtc/Sources/flutter_webrtc/include/flutter_webrtc/**/*.h'
   s.dependency 'Flutter'
   s.dependency 'WebRTC-SDK', '150.7871.01'
   s.ios.deployment_target = '13.0'
   s.static_framework = true
   s.pod_target_xcconfig = {
-    'CLANG_CXX_LANGUAGE_STANDARD' => 'c++14',
-    'USER_HEADER_SEARCH_PATHS' => '"${PODS_TARGET_SRCROOT}/flutter_webrtc/Sources/flutter_webrtc/include/flutter_webrtc"'
+    'CLANG_CXX_LANGUAGE_STANDARD' => 'c++17',
+    'USER_HEADER_SEARCH_PATHS' => '"${PODS_TARGET_SRCROOT}/flutter_webrtc/Sources/flutter_webrtc/include/flutter_webrtc" "${PODS_TARGET_SRCROOT}/flutter_webrtc/Sources/flutter_webrtc/capture_chain"'
   }
   s.libraries = 'c++'
 end
