@@ -105,5 +105,5 @@ jobs:
       - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         with:
           manifest-path: third_party/dfn/Cargo.toml
-          command: check licenses
-          command-arguments: "--config third_party/dfn/deny.toml"
+          # --config is an option of check, so it has to come before the licenses subcommand.
+          command: check --config third_party/dfn/deny.toml licenses
