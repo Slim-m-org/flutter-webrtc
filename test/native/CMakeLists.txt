@@ -15,6 +15,7 @@ add_executable(native_tests
   input_gate_meter_test.cc
   input_gate_lookahead_test.cc
   capture_chain_burst_test.cc
+  capture_chain_api_test.cc
   voice_leveler_test.cc
   mic_sample_tap_test.cc
   frame_fit_test.cc
@@ -29,13 +30,14 @@ add_executable(native_tests
   "${ROOT}/common/cpp/src/flutter_input_gate.cc"
   "${ROOT}/common/cpp/src/flutter_voice_dynamics.cc"
   "${ROOT}/common/cpp/src/flutter_capture_chain.cc"
+  "${ROOT}/common/cpp/src/flutter_capture_chain_api.cc"
   "${ROOT}/common/cpp/src/flutter_mic_sample_tap.cc"
   "${ROOT}/common/cpp/src/flutter_frame_fit.cc"
   "${ROOT}/common/cpp/src/flutter_render_limiter.cc"
   "${ROOT}/common/cpp/src/flutter_render_gains.cc"
 )
 target_include_directories(native_tests PRIVATE
-  "${CMAKE_CURRENT_LIST_DIR}/stub"
+  "${ROOT}/common/cpp/portable"
   "${ROOT}/common/cpp/include"
   "${ROOT}/linux/flutter/include"
 )
@@ -61,7 +63,7 @@ add_executable(thread_tests
   main.cc
 )
 target_include_directories(thread_tests PRIVATE
-  "${CMAKE_CURRENT_LIST_DIR}/stub"
+  "${ROOT}/common/cpp/portable"
   "${ROOT}/common/cpp/include"
 )
 target_link_libraries(thread_tests PRIVATE Threads::Threads)
@@ -81,7 +83,7 @@ add_executable(strongest_tool strongest_tool.cc
   "${ROOT}/common/cpp/src/flutter_onset_cover.cc"
   "${ROOT}/common/cpp/src/flutter_rate_converter.cc"
 )
-target_include_directories(strongest_tool PRIVATE "${ROOT}/common/cpp/include" "${CMAKE_CURRENT_LIST_DIR}/stub")
+target_include_directories(strongest_tool PRIVATE "${ROOT}/common/cpp/include" "${ROOT}/common/cpp/portable")
 target_link_libraries(strongest_tool PRIVATE slimm_rnnoise Threads::Threads)
 if(TARGET slimm_dfn)
   target_link_libraries(strongest_tool PRIVATE slimm_dfn)
