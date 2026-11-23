@@ -57,6 +57,20 @@ struct ScaledI420 {
   int stride_uv() const { return (width + 1) / 2; }
 };
 
+// The area-averaging weights that take `src` samples down to `dst` along one
+// side. Every output has `count` taps from `first`, zero-padded, so the scale
+// loops run a fixed length.
+struct AxisTaps {
+  int src = 0;
+  int dst = 0;
+  int count = 0;
+  std::vector<int> first;
+  std::vector<uint16_t> weights;
+
+  // Builds the weights unless they already map `src` to `dst`.
+  void Prepare(int src_samples, int dst_samples);
+};
+
 // Scales every frame down to fit inside `limit` while keeping its aspect
 // ratio. One instance serves one stream and one thread.
 class FrameFitter {
@@ -68,9 +82,23 @@ class FrameFitter {
   const ScaledI420* Fit(const I420View& in);
 
  private:
+  struct PlaneTaps {
+    AxisTaps cols;
+    AxisTaps rows;
+  };
+
+  void ScalePlane(const uint8_t* src,
+                  int src_stride,
+                  const PlaneTaps& taps,
+                  uint8_t* dst,
+                  int dst_stride);
+
   FrameSize limit_;
   ScaledI420 out_;
-  std::vector<uint16_t> scratch_;
+  PlaneTaps luma_;
+  PlaneTaps chroma_;
+  std::vector<uint32_t> row_sum_;
+  std::vector<uint16_t> row_mid_;
 };
 
 }  // namespace flutter_webrtc_plugin

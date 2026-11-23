@@ -18,6 +18,7 @@ add_executable(native_tests
   voice_leveler_test.cc
   mic_sample_tap_test.cc
   frame_fit_test.cc
+  frame_fit_reference.cc
   render_limiter_test.cc
   shared_state_test.cc
   check_registry.cc
@@ -86,6 +87,16 @@ target_link_libraries(strongest_tool PRIVATE slimm_rnnoise Threads::Threads)
 if(TARGET slimm_dfn)
   target_link_libraries(strongest_tool PRIVATE slimm_dfn)
 endif()
+
+# Times the share size limit's scale per frame against the scaler it replaced: frame_fit_bench [frames]
+add_executable(frame_fit_bench frame_fit_bench.cc frame_fit_reference.cc
+  "${ROOT}/common/cpp/src/flutter_frame_fit.cc"
+)
+target_include_directories(frame_fit_bench PRIVATE
+  "${CMAKE_CURRENT_LIST_DIR}/stub"
+  "${ROOT}/common/cpp/include"
+  "${ROOT}/linux/flutter/include"
+)
 
 # The Linux portal session guard on a private session bus; glib makes it its own binary.
 find_package(PkgConfig)

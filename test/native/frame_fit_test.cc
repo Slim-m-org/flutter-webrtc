@@ -1,8 +1,12 @@
+#include <algorithm>
 #include <cstdint>
+#include <cstdlib>
+#include <random>
 #include <vector>
 
 #include "check.h"
 #include "flutter_frame_fit.h"
+#include "frame_fit_reference.h"
 
 namespace {
 
@@ -122,6 +126,105 @@ TEST(ShareFit_TheOutputBufferIsReusedAcrossFrames) {
   const ScaledI420* second = fitter.Fit(in.View());
   CHECK(second == first);
   CHECK(second->y.data() == data);
+}
+
+// Screen-like content: noise, so every tap of every output counts.
+struct NoiseFrame {
+  NoiseFrame(int w, int h, uint32_t seed)
+      : width(w),
+        height(h),
+        y(static_cast<size_t>(w) * h),
+        u(static_cast<size_t>((w + 1) / 2) * ((h + 1) / 2)),
+        v(u.size()) {
+    std::mt19937 rng(seed);
+    for (auto* plane : {&y, &u, &v}) {
+      for (auto& p : *plane)
+        p = static_cast<uint8_t>(rng());
+    }
+  }
+
+  I420View View() const {
+    const int uv = (width + 1) / 2;
+    return {width, height, y.data(), width, u.data(), uv, v.data(), uv};
+  }
+
+  int width, height;
+  std::vector<uint8_t> y, u, v;
+};
+
+int MaxDifference(const std::vector<uint8_t>& a,
+                  const std::vector<uint8_t>& b) {
+  if (a.size() != b.size())
+    return 256;
+  int worst = 0;
+  for (size_t i = 0; i < a.size(); ++i) {
+    worst = std::max(worst, std::abs(int{a[i]} - int{b[i]}));
+  }
+  return worst;
+}
+
+// The scaled frame against the first scaler's, which the fps readback of
+// 2026-11-02 shipped: same size, and no sample more than one level apart.
+void CheckMatchesFirstScaler(const I420View& in, const ScaledI420& out) {
+  ScaledI420 first;
+  first.width = out.width;
+  first.height = out.height;
+  frame_fit_reference::Scale(in, &first);
+  CHECK(out.y.size() == first.y.size());
+  CHECK(out.u.size() == first.u.size());
+  CHECK(MaxDifference(out.y, first.y) <= 1);
+  CHECK(MaxDifference(out.u, first.u) <= 1);
+  CHECK(MaxDifference(out.v, first.v) <= 1);
+}
+
+TEST(ShareFit_TheShippedScreensComeOutAtTheirTierSize) {
+  struct Case {
+    FrameSize source, tier, out;
+  };
+  const Case cases[] = {{{3840, 2160}, {1920, 1080}, {1920, 1080}},
+                        {{3440, 1440}, {1920, 1080}, {1920, 804}},
+                        {{2560, 1600}, {2560, 1440}, {2304, 1440}},
+                        {{5120, 1080}, {1920, 1080}, {1920, 406}}};
+  for (const Case& c : cases) {
+    const NoiseFrame in(c.source.width, c.source.height, 1);
+    FrameFitter fitter(c.tier);
+    const ScaledI420* out = fitter.Fit(in.View());
+    CHECK(out != nullptr);
+    if (!out)
+      continue;
+    CHECK(out->width == c.out.width && out->height == c.out.height);
+    CHECK(out->y.size() == static_cast<size_t>(c.out.width) * c.out.height);
+    CHECK(out->u.size() ==
+          static_cast<size_t>(c.out.width / 2) * (c.out.height / 2));
+    CheckMatchesFirstScaler(in.View(), *out);
+  }
+}
+
+TEST(ShareFit_OddAndSteepScalesMatchTheFirstScaler) {
+  const FrameSize sources[] = {{2561, 1441}, {3840, 2160}, {5120, 1080}};
+  const FrameSize tiers[] = {{1920, 1080}, {640, 360}, {1280, 720}};
+  for (const FrameSize source : sources) {
+    for (const FrameSize tier : tiers) {
+      const NoiseFrame in(source.width, source.height, 2);
+      FrameFitter fitter(tier);
+      const ScaledI420* out = fitter.Fit(in.View());
+      CHECK(out != nullptr);
+      if (out)
+        CheckMatchesFirstScaler(in.View(), *out);
+    }
+  }
+}
+
+TEST(ShareFit_ASourceThatChangesSizeMidStreamGetsFreshTaps) {
+  FrameFitter fitter({1920, 1080});
+  const NoiseFrame sizes[] = {
+      {3840, 2160, 3}, {2560, 1440, 4}, {3440, 1440, 5}, {3840, 2160, 6}};
+  for (const NoiseFrame& in : sizes) {
+    const ScaledI420* out = fitter.Fit(in.View());
+    CHECK(out != nullptr);
+    if (out)
+      CheckMatchesFirstScaler(in.View(), *out);
+  }
 }
 
 TEST(ShareFit_ReadsTheSizeFromGetDisplayMediaConstraints) {

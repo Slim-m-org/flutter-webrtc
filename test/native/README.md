@@ -35,6 +35,10 @@ The Windows linker has no `--wrap`, so those cases are Linux only.
 `portal_guard_tests` runs the Linux portal session guard on a private D-Bus session bus.
 It is built when glib is found, and prints `skip` when there is no `dbus-daemon`.
 
+`frame_fit_bench [frames]` times the share size limit's scale for the 4K, ultrawide, 16:10 and super ultrawide screens at their tier sizes.
+It prints the median milliseconds per frame of today's scaler, of the first one it replaced (`frame_fit_reference.cc`), and of the copy into a libwebrtc frame that follows either.
+The tests hold today's scaler to within one level of that first one on every sample.
+
 `strongest_tool in.f32 out.f32 strongest` runs a raw 48 kHz float file through
 the suppressor and prints the real-time factor; its tuning comes from the
 environment (see the top of `strongest_tool.cc`). Both targets build the

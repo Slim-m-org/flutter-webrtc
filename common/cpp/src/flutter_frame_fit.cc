@@ -7,77 +7,35 @@ namespace flutter_webrtc_plugin {
 
 namespace {
 
-constexpr int kWeightBits = 16;
+constexpr int kWeightBits = 14;
 constexpr uint32_t kWeightOne = 1u << kWeightBits;
+// The row pass keeps eight fractional bits, so its sums fit in 16 bits.
+constexpr int kRowShift = kWeightBits - 8;
+constexpr int kColShift = kWeightBits + 8;
 
-// One output sample's share of each source sample under it.
-struct Taps {
-  int first = 0;
-  std::vector<uint32_t> weights;
-};
-
-// Every output sample covers src/dst source samples; a source sample on the
-// edge is shared by the weight of the part that lies inside. The weights of a
-// sample add up to exactly kWeightOne, so flat areas keep their value.
-std::vector<Taps> BuildTaps(int src, int dst) {
-  std::vector<Taps> taps(dst);
-  for (int d = 0; d < dst; ++d) {
-    const double begin = static_cast<double>(d) * src / dst;
-    const double end = static_cast<double>(d + 1) * src / dst;
-    const int first = static_cast<int>(std::floor(begin));
-    const int last = std::min(src, static_cast<int>(std::ceil(end)));
-    Taps& t = taps[d];
-    t.first = first;
-    uint32_t total = 0;
-    for (int s = first; s < last; ++s) {
-      const double overlap =
-          std::min<double>(end, s + 1) - std::max<double>(begin, s);
-      const auto w = static_cast<uint32_t>(
-          std::lround(overlap / (end - begin) * kWeightOne));
-      t.weights.push_back(w);
-      total += w;
-    }
-    // Rounding leaves the sum off by a few units; the heaviest tap absorbs it.
-    auto heaviest = std::max_element(t.weights.begin(), t.weights.end());
-    *heaviest = static_cast<uint32_t>(*heaviest + kWeightOne - total);
+// The column pass of one row; a fixed tap count lets the compiler unroll the
+// taps, and kTaps 0 reads the count at run time.
+template <int kTaps>
+void ScaleLine(const uint16_t* mid, const AxisTaps& cols, uint8_t* out) {
+  const int taps = kTaps > 0 ? kTaps : cols.count;
+  const uint16_t* wx = cols.weights.data();
+  for (int x = 0; x < cols.dst; ++x, wx += taps) {
+    const uint16_t* in = mid + cols.first[x];
+    uint32_t acc = 1u << (kColShift - 1);
+    for (int j = 0; j < taps; ++j)
+      acc += uint32_t{wx[j]} * in[j];
+    out[x] = static_cast<uint8_t>(acc >> kColShift);
   }
-  return taps;
 }
 
-// Area-averaging downscale of one plane: columns first into `scratch` with
-// eight fractional bits, then rows.
-void ScalePlane(const uint8_t* src, int src_stride, int src_w, int src_h,
-                uint8_t* dst, int dst_stride, int dst_w, int dst_h,
-                std::vector<uint16_t>* scratch) {
-  const std::vector<Taps> cols = BuildTaps(src_w, dst_w);
-  const std::vector<Taps> rows = BuildTaps(src_h, dst_h);
-  scratch->resize(static_cast<size_t>(src_h) * dst_w);
-
-  for (int y = 0; y < src_h; ++y) {
-    const uint8_t* line = src + static_cast<size_t>(y) * src_stride;
-    uint16_t* mid = scratch->data() + static_cast<size_t>(y) * dst_w;
-    for (int x = 0; x < dst_w; ++x) {
-      const Taps& t = cols[x];
-      uint32_t sum = 0;
-      for (size_t i = 0; i < t.weights.size(); ++i) {
-        sum += t.weights[i] * line[t.first + i];
-      }
-      mid[x] = static_cast<uint16_t>(sum >> (kWeightBits - 8));
-    }
-  }
-
-  for (int y = 0; y < dst_h; ++y) {
-    const Taps& t = rows[y];
-    uint8_t* line = dst + static_cast<size_t>(y) * dst_stride;
-    for (int x = 0; x < dst_w; ++x) {
-      uint64_t sum = 0;
-      for (size_t i = 0; i < t.weights.size(); ++i) {
-        sum += static_cast<uint64_t>(t.weights[i]) *
-               (*scratch)[static_cast<size_t>(t.first + i) * dst_w + x];
-      }
-      line[x] = static_cast<uint8_t>((sum + (1u << (kWeightBits + 7))) >>
-                                     (kWeightBits + 8));
-    }
+// Halving gives every output two taps of exactly half weight, so this is the
+// generic column pass's result, in a loop the compiler can vectorize.
+void HalveLine(const uint16_t* mid, int dst_w, uint8_t* out) {
+  constexpr int kHalfShift = kColShift - kWeightBits + 1;
+  for (int x = 0; x < dst_w; ++x) {
+    const uint32_t pair = uint32_t{mid[2 * x]} + mid[2 * x + 1];
+    out[x] =
+        static_cast<uint8_t>((pair + (1u << (kHalfShift - 1))) >> kHalfShift);
   }
 }
 
@@ -147,10 +105,113 @@ FrameSize FitWithin(FrameSize source, FrameSize limit) {
   return fitted;
 }
 
+// Every output sample covers src/dst source samples; a source sample on the
+// edge is shared by the weight of the part that lies inside. The weights of a
+// sample add up to exactly kWeightOne, so flat areas keep their value.
+void AxisTaps::Prepare(int src_samples, int dst_samples) {
+  if (src == src_samples && dst == dst_samples)
+    return;
+  src = src_samples;
+  dst = dst_samples;
+  std::vector<double> begins(dst + 1);
+  for (int d = 0; d <= dst; ++d)
+    begins[d] = static_cast<double>(d) * src / dst;
+  count = 1;
+  for (int d = 0; d < dst; ++d) {
+    const int lo = static_cast<int>(std::floor(begins[d]));
+    const int hi = std::min(src, static_cast<int>(std::ceil(begins[d + 1])));
+    count = std::max(count, hi - lo);
+  }
+  first.assign(dst, 0);
+  weights.assign(static_cast<size_t>(dst) * count, 0);
+  for (int d = 0; d < dst; ++d) {
+    const double begin = begins[d];
+    const double end = begins[d + 1];
+    const int lo = static_cast<int>(std::floor(begin));
+    const int hi = std::min(src, static_cast<int>(std::ceil(end)));
+    // The last outputs start early enough that their padded taps stay inside.
+    first[d] = std::min(lo, src - count);
+    uint16_t* w = weights.data() + static_cast<size_t>(d) * count;
+    uint16_t* heaviest = w + (lo - first[d]);
+    uint32_t total = 0;
+    for (int s = lo; s < hi; ++s) {
+      const double overlap =
+          std::min<double>(end, s + 1) - std::max<double>(begin, s);
+      uint16_t& tap = w[s - first[d]];
+      tap = static_cast<uint16_t>(
+          std::lround(overlap / (end - begin) * kWeightOne));
+      total += tap;
+      if (tap > *heaviest)
+        heaviest = &tap;
+    }
+    // Rounding leaves the sum off by a few units; the heaviest tap absorbs it.
+    *heaviest = static_cast<uint16_t>(*heaviest + kWeightOne - total);
+  }
+}
+
+// Rows first, so the column pass runs once per output row rather than once per
+// source row, and the row pass is a straight multiply-add along each line.
+void FrameFitter::ScalePlane(const uint8_t* src,
+                             int src_stride,
+                             const PlaneTaps& taps,
+                             uint8_t* dst,
+                             int dst_stride) {
+  const AxisTaps& rows = taps.rows;
+  const AxisTaps& cols = taps.cols;
+  const int src_w = cols.src;
+  row_sum_.resize(src_w);
+  row_mid_.resize(src_w);
+  uint32_t* sum = row_sum_.data();
+  uint16_t* mid = row_mid_.data();
+
+  for (int y = 0; y < rows.dst; ++y) {
+    const uint16_t* wy =
+        rows.weights.data() + static_cast<size_t>(y) * rows.count;
+    const uint8_t* line = src + static_cast<size_t>(rows.first[y]) * src_stride;
+    const uint32_t w0 = wy[0];
+    for (int x = 0; x < src_w; ++x)
+      sum[x] = w0 * line[x];
+    for (int i = 1; i < rows.count; ++i) {
+      line += src_stride;
+      const uint32_t w = wy[i];
+      if (w == 0)
+        continue;
+      for (int x = 0; x < src_w; ++x)
+        sum[x] += w * line[x];
+    }
+    for (int x = 0; x < src_w; ++x) {
+      mid[x] = static_cast<uint16_t>((sum[x] + (1u << (kRowShift - 1))) >>
+                                     kRowShift);
+    }
+
+    uint8_t* out = dst + static_cast<size_t>(y) * dst_stride;
+    if (cols.src == 2 * cols.dst) {
+      HalveLine(mid, cols.dst, out);
+      continue;
+    }
+    switch (cols.count) {
+      case 2:
+        ScaleLine<2>(mid, cols, out);
+        break;
+      case 3:
+        ScaleLine<3>(mid, cols, out);
+        break;
+      case 4:
+        ScaleLine<4>(mid, cols, out);
+        break;
+      default:
+        ScaleLine<0>(mid, cols, out);
+        break;
+    }
+  }
+}
+
 const ScaledI420* FrameFitter::Fit(const I420View& in) {
-  if (in.width <= 0 || in.height <= 0) return nullptr;
+  if (in.width <= 0 || in.height <= 0)
+    return nullptr;
   const FrameSize target = FitWithin({in.width, in.height}, limit_);
-  if (target.width >= in.width && target.height >= in.height) return nullptr;
+  if (target.width >= in.width && target.height >= in.height)
+    return nullptr;
 
   out_.width = target.width;
   out_.height = target.height;
@@ -160,14 +221,13 @@ const ScaledI420* FrameFitter::Fit(const I420View& in) {
   out_.u.resize(static_cast<size_t>(chroma_w) * chroma_h);
   out_.v.resize(out_.u.size());
 
-  const int src_chroma_w = (in.width + 1) / 2;
-  const int src_chroma_h = (in.height + 1) / 2;
-  ScalePlane(in.y, in.stride_y, in.width, in.height, out_.y.data(),
-             out_.stride_y(), target.width, target.height, &scratch_);
-  ScalePlane(in.u, in.stride_u, src_chroma_w, src_chroma_h, out_.u.data(),
-             chroma_w, chroma_w, chroma_h, &scratch_);
-  ScalePlane(in.v, in.stride_v, src_chroma_w, src_chroma_h, out_.v.data(),
-             chroma_w, chroma_w, chroma_h, &scratch_);
+  luma_.cols.Prepare(in.width, target.width);
+  luma_.rows.Prepare(in.height, target.height);
+  chroma_.cols.Prepare((in.width + 1) / 2, chroma_w);
+  chroma_.rows.Prepare((in.height + 1) / 2, chroma_h);
+  ScalePlane(in.y, in.stride_y, luma_, out_.y.data(), out_.stride_y());
+  ScalePlane(in.u, in.stride_u, chroma_, out_.u.data(), chroma_w);
+  ScalePlane(in.v, in.stride_v, chroma_, out_.v.data(), chroma_w);
   return &out_;
 }
 
