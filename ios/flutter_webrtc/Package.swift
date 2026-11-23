@@ -28,12 +28,18 @@ let package = Package(
                 .product(name: "FlutterFramework", package: "FlutterFramework")
             ],
             cSettings: [
-                .headerSearchPath("include/flutter_webrtc")
+                .headerSearchPath("include/flutter_webrtc"),
+                // The common/cpp capture chain and rnnoise, linked in from the repo root.
+                .headerSearchPath("capture_chain")
+            ],
+            cxxSettings: [
+                .headerSearchPath("include/flutter_webrtc"),
+                .headerSearchPath("capture_chain")
             ],
             linkerSettings: [
                 .linkedLibrary("c++")
             ]
         )
     ],
-    cxxLanguageStandard: .cxx14
+    cxxLanguageStandard: .cxx17
 )
