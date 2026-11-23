@@ -36,3 +36,5 @@ third_party/downloads/
 third_party/libwebrtc/
 
 android/.gradle
+# The Android capture chain's CMake build tree.
+android/.cxx/

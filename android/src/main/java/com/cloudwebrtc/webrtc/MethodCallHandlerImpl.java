@@ -27,6 +27,7 @@ import com.cloudwebrtc.webrtc.audio.AudioDeviceKind;
 import com.cloudwebrtc.webrtc.audio.AudioProcessingController;
 import com.cloudwebrtc.webrtc.audio.AudioSwitchManager;
 import com.cloudwebrtc.webrtc.audio.AudioUtils;
+import com.cloudwebrtc.webrtc.audio.CaptureChainProcessing;
 import com.cloudwebrtc.webrtc.audio.LocalAudioTrack;
 import com.cloudwebrtc.webrtc.audio.PlaybackSamplesReadyCallbackAdapter;
 import com.cloudwebrtc.webrtc.audio.RecordSamplesReadyCallbackAdapter;
@@ -401,6 +402,7 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
     videoEncoderFactory.setForceSWCodecList(forceSWCodecList);
 
     audioProcessingController = new AudioProcessingController();
+    audioProcessingController.capturePostProcessing.addProcessor(new CaptureChainProcessing());
 
     factoryBuilder.setAudioProcessingFactory(audioProcessingController.externalAudioProcessingFactory);
 
@@ -867,6 +869,24 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       case "mediaStreamTrackSwitchCamera": {
         String trackId = call.argument("trackId");
         getUserMediaImpl.switchCamera(trackId, result);
+        break;
+      }
+      case "setInputGate": {
+        Map<String, Object> args = call.arguments();
+        try {
+          CaptureChainProcessing.configure(args != null ? args : new HashMap<>());
+          result.success(null);
+        } catch (IllegalStateException e) {
+          result.error("setInputGate", e.getMessage(), null);
+        }
+        break;
+      }
+      case "getInputGate": {
+        try {
+          result.success(CaptureChainProcessing.read());
+        } catch (IllegalStateException e) {
+          result.error("getInputGate", e.getMessage(), null);
+        }
         break;
       }
       case "setVolume": {

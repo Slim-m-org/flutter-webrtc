@@ -48,6 +48,13 @@ android {
         consumerProguardFiles 'proguard-rules.pro'
     }
 
+    // The capture chain from common/cpp; see src/main/cpp/CMakeLists.txt.
+    externalNativeBuild {
+        cmake {
+            path "src/main/cpp/CMakeLists.txt"
+        }
+    }
+
     lintOptions {
         disable 'InvalidPackage'
     }
