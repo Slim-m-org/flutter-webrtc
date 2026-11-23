@@ -62,14 +62,14 @@ void Configure(bool strong, bool gate, bool dynamics) {
   CaptureChain::Instance()->Initialize(48000, 1);
 }
 
-void SpeechThenSilence(Stream& s, int silent_frames) {
+void SpeechThenSilence(Stream& s) {
   s.Run(300, [&](int i) { return s.Speech(i); });
 }
 
 float SilenceAfterSpeech(int from_rate, int to_rate) {
   Configure(true, true, true);
   Stream a{from_rate};
-  SpeechThenSilence(a, 0);
+  SpeechThenSilence(a);
   a.Run(200, [](int) { return 0.0f; });
   Stream b{to_rate};
   return b.Run(300, [](int) { return 0.0f; });

@@ -26,7 +26,7 @@ class RenderLimiter : public libwebrtc::RTCAudioProcessing::CustomProcessing {
   void Initialize(int sample_rate_hz, int num_channels) override;
   void Process(int num_bands, int num_frames, int buffer_size,
                float* buffer) override;
-  void Reset(int new_rate) override {}
+  void Reset(int /*new_rate*/) override {}
   void Release() override {}
 
  private:

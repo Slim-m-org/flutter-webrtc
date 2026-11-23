@@ -64,12 +64,18 @@ add_executable(thread_tests
   main.cc
 )
 target_include_directories(thread_tests PRIVATE
+  "${CMAKE_CURRENT_LIST_DIR}/stub"
   "${ROOT}/common/cpp/portable"
   "${ROOT}/common/cpp/include"
 )
 target_link_libraries(thread_tests PRIVATE Threads::Threads)
 if(UNIX)
   target_sources(thread_tests PRIVATE screen_session_env_test.cc)
+endif()
+
+# The tools use getenv and fopen, which MSVC flags as unsafe.
+if(MSVC)
+  add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
 endif()
 
 # Runs a raw float file through the suppressor the way the capture chain does,

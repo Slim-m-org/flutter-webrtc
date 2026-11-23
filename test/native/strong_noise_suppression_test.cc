@@ -132,7 +132,7 @@ TEST(strong_attenuates_steady_noise_at_every_rate) {
 }
 
 TEST(strong_follows_a_rate_change_and_never_writes_past_the_frame) {
-  constexpr float kCanary = 12345.0f;
+  static constexpr float kCanary = 12345.0f;
   constexpr int kPad = 512;
   NoiseSuppressor suppressor;
   suppressor.Configure(true);

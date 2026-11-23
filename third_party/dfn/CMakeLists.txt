@@ -39,7 +39,7 @@ else()
   # What rustc lists for a staticlib that uses std, threads and files.
   if(WIN32)
     set_property(TARGET slimm_dfn PROPERTY INTERFACE_LINK_LIBRARIES
-      kernel32.lib ntdll.lib userenv.lib ws2_32.lib dbghelp.lib bcrypt.lib advapi32.lib)
+      kernel32.lib ntdll.lib userenv.lib ws2_32.lib dbghelp.lib bcrypt.lib advapi32.lib synchronization.lib)
   else()
     set_property(TARGET slimm_dfn PROPERTY INTERFACE_LINK_LIBRARIES pthread dl m)
   endif()

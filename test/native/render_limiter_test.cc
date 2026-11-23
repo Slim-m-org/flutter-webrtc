@@ -104,7 +104,7 @@ TEST(RenderLimiter_ProcessShapesEveryChannelOfTheMix) {
 
 // As libwebrtc calls it: num_frames is each channel's full-band length, 160 per band at 16, 32 and 48 kHz.
 TEST(RenderLimiter_ProcessShapesTheWholeMixAndNothingPastItAtEveryBandCount) {
-  constexpr float kGuardValue = 20000.0f;
+  static constexpr float kGuardValue = 20000.0f;
   constexpr float kBoost = 3.0f;
   for (int bands = 1; bands <= 3; ++bands) {
     for (int channels = 1; channels <= 2; ++channels) {
