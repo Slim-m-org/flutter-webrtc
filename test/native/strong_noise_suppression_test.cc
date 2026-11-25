@@ -19,8 +19,6 @@ using flutter_webrtc_plugin::RateConverter;
 
 namespace {
 
-long g_allocations = 0;
-
 double Rms(const std::vector<float>& x, size_t from, size_t to) {
   double sum = 0.0;
   for (size_t i = from; i < to; ++i) sum += static_cast<double>(x[i]) * x[i];
@@ -45,8 +43,12 @@ std::vector<float> Sine(size_t n, int rate, double hz, float amplitude) {
 
 }  // namespace
 
+long g_allocations = 0;
+thread_local long g_thread_allocations = 0;
+
 void* operator new(size_t size) {
   ++g_allocations;
+  ++g_thread_allocations;
   void* p = std::malloc(size);
   if (p == nullptr) throw std::bad_alloc();
   return p;

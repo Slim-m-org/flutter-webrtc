@@ -94,7 +94,7 @@ TEST(RenderLimiter_ProcessShapesEveryChannelOfTheMix) {
   stereo.insert(stereo.end(), left.begin(), left.end());
   RenderLimiter::Instance()->Initialize(kRate, 2);
   RenderLimiter::Instance()->SetBoost(3.0f);
-  RenderLimiter::Instance()->Process(1, frames, frames, stereo.data());
+  RenderLimiter::Instance()->Process(1, frames, 2 * frames, stereo.data());
   CHECK(*std::max_element(stereo.begin(), stereo.end()) <= kFullScale);
   CHECK(std::equal(stereo.begin(), stereo.begin() + frames, stereo.begin() + frames));
   RenderLimiter::Instance()->SetBoost(0.2f);
@@ -120,7 +120,7 @@ TEST(RenderLimiter_ProcessShapesTheWholeMixAndNothingPastItAtEveryBandCount) {
       mix.resize(size + 3 * size, kGuardValue);
       RenderLimiter::Instance()->Initialize(frames * 100, channels);
       RenderLimiter::Instance()->SetBoost(kBoost);
-      RenderLimiter::Instance()->Process(bands, frames, 160 * bands, mix.data());
+      RenderLimiter::Instance()->Process(bands, frames, size, mix.data());
       const bool shaped = std::equal(expected.begin(), expected.end(), mix.begin());
       const bool past_untouched = std::all_of(
           mix.begin() + size, mix.end(), [](float x) { return x == kGuardValue; });
@@ -165,3 +165,25 @@ TEST(RenderGains_APersonWhoLeftNoLongerRaisesTheBoost) {
 }
 
 }  // namespace
+
+// The buffer size libwebrtc hands over is the bound, whatever channel count Initialize was told.
+TEST(RenderLimiter_ProcessNeverWritesPastTheBufferSize) {
+  static constexpr float kGuardValue = 20000.0f;
+  const int frames = 160;
+  auto channel = Sine(0.9f * kFullScale, frames);
+  std::vector<float> mix = channel;
+  mix.resize(frames * 4, kGuardValue);
+  RenderLimiter::Instance()->Initialize(kRate, 2);
+  RenderLimiter::Instance()->SetBoost(3.0f);
+  RenderLimiter::Instance()->Process(1, frames, frames, mix.data());
+  const bool past_untouched = std::all_of(
+      mix.begin() + frames, mix.end(), [](float x) { return x == kGuardValue; });
+  CHECK(past_untouched);
+  CHECK(*std::max_element(mix.begin(), mix.begin() + frames) <= kFullScale);
+  std::vector<float> short_buffer(frames - 1, kGuardValue);
+  RenderLimiter::Instance()->Process(1, frames, frames - 1, short_buffer.data());
+  CHECK(std::all_of(short_buffer.begin(), short_buffer.end(),
+                    [](float x) { return x == kGuardValue; }));
+  RenderLimiter::Instance()->SetBoost(1.0f);
+  RenderLimiter::Instance()->Initialize(kRate, 1);
+}

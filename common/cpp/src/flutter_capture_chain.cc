@@ -35,6 +35,7 @@ CaptureChain* CaptureChain::Instance() {
 
 void CaptureChain::Initialize(int sample_rate_hz, int num_channels) {
   InputGate::Instance()->Initialize(sample_rate_hz, num_channels);
+  MicSampleTap::Instance()->SetCaptureRate(sample_rate_hz);
   NoiseSuppressor::Instance()->Restart();
   VoiceDynamics::Instance()->Restart();
 }
@@ -53,6 +54,7 @@ void CaptureChain::Process(int /*num_bands*/, int num_frames,
 
 void CaptureChain::Reset(int new_rate) {
   InputGate::Instance()->Reset(new_rate);
+  MicSampleTap::Instance()->SetCaptureRate(new_rate);
   NoiseSuppressor::Instance()->Restart();
   VoiceDynamics::Instance()->Restart();
 }

@@ -32,6 +32,7 @@ constexpr int kLowSpeechHoldFrames = 100 / kFrameMs;
 constexpr float kOpenRampMs = 5.0f;
 constexpr float kCloseRampMs = 60.0f;
 constexpr float kFloorDb = -100.0f;
+constexpr float kDefaultThresholdDb = -50.0f;
 // The float samples are on the int16 scale.
 constexpr float kFullScale = 32768.0f;
 
@@ -43,6 +44,7 @@ InputGate* InputGate::Instance() {
 }
 
 void InputGate::Configure(bool enabled, float threshold_db) {
+  if (!std::isfinite(threshold_db)) threshold_db = kDefaultThresholdDb;
   threshold_db_.store(std::clamp(threshold_db, kFloorDb, 0.0f));
   enabled_.store(enabled);
 }

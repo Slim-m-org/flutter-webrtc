@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
 namespace flutter_webrtc_plugin {
 
@@ -23,14 +24,26 @@ MicSampleTap* MicSampleTap::Instance() {
 
 void MicSampleTap::Start(int max_seconds) {
   const int seconds = (std::min)(kMaxSeconds, (std::max)(1, max_seconds));
+  const size_t limit = static_cast<size_t>(seconds) * kRateHz;
+  std::vector<int16_t> samples;
+  samples.reserve(limit);
+  RateConverter converter;
+  std::vector<float> converted;
+  int converter_rate_hz = 0;
+  const int rate_hz = capture_rate_hz_.load();
+  if (rate_hz != kRateHz && converter.Configure(rate_hz, kRateHz)) {
+    converted.assign(converter.OutFrames(), 0.0f);
+    converter_rate_hz = rate_hz;
+  }
   std::lock_guard<std::mutex> lock(mutex_);
-  samples_.clear();
-  // Reserved up front so the audio thread never allocates.
-  limit_ = static_cast<size_t>(seconds) * kRateHz;
-  samples_.reserve(limit_);
+  samples_.swap(samples);
+  limit_ = limit;
   kept_ = 0;
-  converter_rate_hz_ = 0;
+  converter_ = std::move(converter);
+  converted_ = std::move(converted);
+  converter_rate_hz_ = converter_rate_hz;
   skipped_.store(0);
+  dropped_.store(0);
   full_.store(false);
   armed_.store(true);
 }
@@ -39,7 +52,11 @@ void MicSampleTap::Stop() { armed_.store(false); }
 
 void MicSampleTap::Feed(const float* frame, int num_frames) {
   if (!armed_.load() || frame == nullptr || num_frames <= 0) return;
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::unique_lock<std::mutex> lock(mutex_, std::try_to_lock);
+  if (!lock.owns_lock()) {
+    dropped_.fetch_add(1);
+    return;
+  }
   if (!armed_.load()) return;
   const int rate_hz = num_frames * 100;
   const float* source = frame;
@@ -68,11 +85,16 @@ void MicSampleTap::Feed(const float* frame, int num_frames) {
 }
 
 std::vector<int16_t> MicSampleTap::Take() {
+  size_t room = 0;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    room = limit_ - kept_;
+  }
+  // Reserved off the lock: what is kept after the swap never exceeds `room`.
   std::vector<int16_t> out;
+  if (armed_.load()) out.reserve(room);
   std::lock_guard<std::mutex> lock(mutex_);
   out.swap(samples_);
-  // The swap took the reserved block, so the next frames reuse a fresh one.
-  if (armed_.load()) samples_.reserve(limit_ - kept_);
   return out;
 }
 

@@ -43,10 +43,10 @@ void RenderLimiter::Initialize(int /*sample_rate_hz*/, int num_channels) {
 }
 
 void RenderLimiter::Process(int /*num_bands*/, int num_frames,
-                            int /*buffer_size*/, float* buffer) {
+                            int buffer_size, float* buffer) {
   if (buffer == nullptr || num_frames <= 0) return;
   const float boost = boost_.load();
-  const int channels = channels_.load();
+  const int channels = (std::min)(channels_.load(), buffer_size / num_frames);
   // Channel 0 of the full-band buffer: each channel is num_frames long at any band count.
   for (int c = 0; c < channels; ++c) {
     Apply(buffer + static_cast<size_t>(c) * num_frames, num_frames, boost);

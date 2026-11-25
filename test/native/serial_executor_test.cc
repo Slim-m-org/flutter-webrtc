@@ -83,4 +83,28 @@ TEST(SerialExecutor_NeverStartedStopsCleanly) {
   executor.Stop();
 }
 
+TEST(SerialExecutor_WakeRunsTheHandlerOnTheWorkerWithoutAPost) {
+  std::atomic<int> woken{0};
+  std::atomic<bool> off_thread{false};
+  SerialExecutor executor;
+  const auto caller = std::this_thread::get_id();
+  executor.SetWakeHandler([&] {
+    off_thread = std::this_thread::get_id() != caller;
+    ++woken;
+  });
+  executor.Post([] {});
+  executor.Wake();
+  for (int i = 0; i < 2000 && woken == 0; ++i) std::this_thread::sleep_for(1ms);
+  CHECK(woken.load() >= 1);
+  CHECK(off_thread.load());
+}
+
+TEST(SerialExecutor_WakeBeforeTheWorkerExistsOrWithoutAHandlerDoesNothing) {
+  SerialExecutor executor;
+  executor.Wake();
+  executor.SetWakeHandler([] {});
+  executor.Wake();
+  executor.Stop();
+}
+
 }  // namespace

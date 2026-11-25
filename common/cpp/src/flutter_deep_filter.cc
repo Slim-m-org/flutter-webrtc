@@ -73,6 +73,7 @@ bool DeepFilter::Process(const float* /*in*/, float* /*out*/) { return false; }
 
 #endif
 
+DeepFilter::DeepFilter() = default;
 DeepFilter::DeepFilter(Impl* impl) : impl_(impl) {}
 DeepFilter::~DeepFilter() = default;
 
