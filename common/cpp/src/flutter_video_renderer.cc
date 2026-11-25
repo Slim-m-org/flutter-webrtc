@@ -16,6 +16,8 @@ void FlutterVideoRenderer::initialize(
   registrar_ = registrar;
   texture_ = std::move(texture);
   texture_id_ = trxture_id;
+  throttle_ = std::make_unique<TrailingThrottle>(
+      [this] { registrar_->MarkTextureFrameAvailable(texture_id_); });
   std::string channel_name =
       "FlutterWebRTC/Texture" + std::to_string(texture_id_);
   event_channel_ = EventChannelProxy::Create(messenger, task_runner, channel_name);
@@ -125,22 +127,16 @@ void FlutterVideoRenderer::OnFrame(scoped_refptr<RTCVideoFrame> frame) {
 
     last_frame_size_ = {(size_t)frame->width(), (size_t)frame->height()};
   }
-  const std::chrono::microseconds min_interval = min_frame_interval_;
-  if (min_interval.count() > 0) {
-    const auto now = std::chrono::steady_clock::now();
-    if (now - last_accepted_ < min_interval) return;
-    last_accepted_ = now;
-  }
   {
     std::lock_guard<std::mutex> lock(mutex_);
     frame_ = frame;
   }
-  registrar_->MarkTextureFrameAvailable(texture_id_);
+  throttle_->Request();
 }
 
 void FlutterVideoRenderer::SetMinFrameInterval(
     std::chrono::microseconds interval) {
-  min_frame_interval_ = interval;
+  throttle_->SetInterval(interval);
 }
 
 void FlutterVideoRenderer::SetVideoTrack(scoped_refptr<RTCVideoTrack> track) {
@@ -148,6 +144,7 @@ void FlutterVideoRenderer::SetVideoTrack(scoped_refptr<RTCVideoTrack> track) {
     if (track_)
       track_->RemoveRenderer(this);
     track_ = track;
+    throttle_->Cancel();
     last_frame_size_ = {0, 0};
     first_frame_rendered = false;
     if (track_)

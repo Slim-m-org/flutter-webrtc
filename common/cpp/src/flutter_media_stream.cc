@@ -529,6 +529,12 @@ void FlutterMediaStream::SelectAudioOutput(
   char deviceGuid[256];
   int playout_devices = base_->audio_device_->PlayoutDevices();
   bool found = false;
+  // "default" asks for whatever the system default speaker is right now.
+  if (device_id == "default" && base_->SelectDefaultPlayoutDevice()) {
+    OptOutOfAudioDucking();
+    result->Success();
+    return;
+  }
   for (uint16_t i = 0; i < playout_devices; i++) {
     base_->audio_device_->PlayoutDeviceName(i, deviceName, deviceGuid);
     std::string cur_device_id =

@@ -59,6 +59,8 @@ add_executable(thread_tests
   locked_map_test.cc
   serial_executor_test.cc
   request_coalescer_test.cc
+  trailing_throttle_test.cc
+  audio_device_lookup_test.cc
   loopback_session_test.cc
   check_registry.cc
   main.cc
