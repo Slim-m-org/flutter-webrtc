@@ -21,6 +21,8 @@ add_executable(native_tests
   frame_fit_test.cc
   frame_fit_reference.cc
   render_limiter_test.cc
+  render_mix_test.cc
+  capture_chain_realtime_test.cc
   shared_state_test.cc
   check_registry.cc
   main.cc
@@ -36,8 +38,10 @@ add_executable(native_tests
   "${ROOT}/common/cpp/src/flutter_frame_fit.cc"
   "${ROOT}/common/cpp/src/flutter_render_limiter.cc"
   "${ROOT}/common/cpp/src/flutter_render_gains.cc"
+  "${ROOT}/common/cpp/src/flutter_render_mix.cc"
 )
 target_include_directories(native_tests PRIVATE
+  "${CMAKE_CURRENT_LIST_DIR}/stub"
   "${ROOT}/common/cpp/portable"
   "${ROOT}/common/cpp/include"
   "${ROOT}/linux/flutter/include"

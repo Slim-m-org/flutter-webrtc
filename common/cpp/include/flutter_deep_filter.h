@@ -33,13 +33,17 @@ class DeepFilter {
   // thread. Null when this build has none or it cannot run.
   static std::unique_ptr<DeepFilter> Load(const Params& params);
 
-  ~DeepFilter();
+  virtual ~DeepFilter();
   DeepFilter(const DeepFilter&) = delete;
   DeepFilter& operator=(const DeepFilter&) = delete;
 
   // One frame on the int16 scale. False, with out untouched, when the model
   // failed or produced a non-finite sample.
-  bool Process(const float* in, float* out);
+  virtual bool Process(const float* in, float* out);
+
+ protected:
+  // A model with no library behind it, for tests to stand in with.
+  DeepFilter();
 
  private:
   struct Impl;

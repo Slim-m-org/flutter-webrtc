@@ -165,3 +165,17 @@ TEST(RenderGains_APersonWhoLeftNoLongerRaisesTheBoost) {
 }
 
 }  // namespace
+
+// libwebrtc hands over one channel's size as buffer_size, so it only rules out a buffer too short for a channel.
+TEST(RenderLimiter_ProcessLeavesABufferShorterThanAChannelAlone) {
+  static constexpr float kGuardValue = 20000.0f;
+  const int frames = 160;
+  RenderLimiter::Instance()->Initialize(kRate, 2);
+  RenderLimiter::Instance()->SetBoost(3.0f);
+  std::vector<float> short_buffer(frames - 1, kGuardValue);
+  RenderLimiter::Instance()->Process(1, frames, frames - 1, short_buffer.data());
+  CHECK(std::all_of(short_buffer.begin(), short_buffer.end(),
+                    [](float x) { return x == kGuardValue; }));
+  RenderLimiter::Instance()->SetBoost(1.0f);
+  RenderLimiter::Instance()->Initialize(kRate, 1);
+}

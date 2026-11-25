@@ -23,13 +23,20 @@ class MicSampleTap {
   // Public so tests can build isolated instances.
   MicSampleTap() = default;
 
-  // Clears what was kept and records up to max_seconds more.
+  // The rate of the frames Feed will get, so Start can prepare its converter
+  // off the audio thread. Safe on the audio thread.
+  void SetCaptureRate(int rate_hz) { capture_rate_hz_.store(rate_hz); }
+
+  // Clears what was kept and records up to max_seconds more. Allocates its
+  // buffers before it takes the lock Feed tries.
   void Start(int max_seconds);
   void Stop();
   bool Armed() const { return armed_.load(); }
 
   // One 10 ms frame in the capture's own rate and in 16-bit full scale, from
-  // the audio thread. A rate that cannot be converted to 48 kHz is skipped.
+  // the audio thread. Never waits: a frame that arrives while Start or Take
+  // holds the lock is dropped. A rate that cannot be converted to 48 kHz is
+  // skipped.
   void Feed(const float* frame, int num_frames);
 
   // Everything kept since the last call, which the caller now owns.
@@ -38,6 +45,9 @@ class MicSampleTap {
   // Frames skipped because they could not be brought to 48 kHz.
   int SkippedFrames() const { return skipped_.load(); }
 
+  // Frames dropped because Start or Take held the lock.
+  int DroppedFrames() const { return dropped_.load(); }
+
   // True once max_seconds have been kept and nothing more is recorded.
   bool Full() const { return full_.load(); }
 
@@ -45,6 +55,8 @@ class MicSampleTap {
   std::atomic<bool> armed_{false};
   std::atomic<bool> full_{false};
   std::atomic<int> skipped_{0};
+  std::atomic<int> dropped_{0};
+  std::atomic<int> capture_rate_hz_{0};
   std::mutex mutex_;
   std::vector<int16_t> samples_;
   size_t limit_ = 0;
