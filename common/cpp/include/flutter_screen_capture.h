@@ -62,6 +62,8 @@ class FlutterScreenCapture : public MediaListObserver,
 
   void OnError(scoped_refptr<RTCDesktopCapturer> capturer) override;
 
+  void OnLoopbackError(const std::string& source_id);
+
  private:
   class ObserverProxy;
 

@@ -125,6 +125,28 @@ if(TARGET PkgConfig::GIO)
   target_link_libraries(portal_guard_tests PRIVATE PkgConfig::GIO Threads::Threads)
 endif()
 
+# The Linux system-audio capturer against a live PulseAudio or PipeWire server, so it only
+# runs from ctest with -DPULSE_CAPTURE_TESTS=ON, on a host that has one (see README).
+if(PkgConfig_FOUND)
+  pkg_check_modules(PULSE IMPORTED_TARGET libpulse libpulse-simple)
+endif()
+if(TARGET PkgConfig::PULSE AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  add_executable(pulse_capture_tests
+    pulse_capture_test.cc
+    check_registry.cc
+    "${ROOT}/linux/pulse_loopback_capturer.cc"
+  )
+  target_compile_definitions(pulse_capture_tests PRIVATE HAVE_LIBPULSE)
+  target_include_directories(pulse_capture_tests PRIVATE
+    "${CMAKE_CURRENT_LIST_DIR}/pulse"
+    "${CMAKE_CURRENT_LIST_DIR}/stub"
+    "${CMAKE_CURRENT_LIST_DIR}"
+    "${ROOT}/common/cpp/include"
+    "${ROOT}/linux"
+  )
+  target_link_libraries(pulse_capture_tests PRIVATE PkgConfig::PULSE Threads::Threads)
+endif()
+
 # A binary whose only test skips, to check how the harness reports and counts one.
 add_executable(harness_probe harness_probe.cc check_registry.cc)
 
@@ -140,6 +162,10 @@ add_test(NAME native_tests COMMAND native_tests ${_strict_flag})
 add_test(NAME thread_tests COMMAND thread_tests ${_strict_flag})
 if(TARGET portal_guard_tests)
   add_test(NAME portal_guard_tests COMMAND portal_guard_tests ${_strict_flag})
+endif()
+option(PULSE_CAPTURE_TESTS "Run pulse_capture_tests, which need a PulseAudio or PipeWire server" OFF)
+if(PULSE_CAPTURE_TESTS AND TARGET pulse_capture_tests)
+  add_test(NAME pulse_capture_tests COMMAND pulse_capture_tests ${_strict_flag})
 endif()
 add_test(NAME harness_reports_a_skip COMMAND harness_probe)
 set_tests_properties(harness_reports_a_skip PROPERTIES

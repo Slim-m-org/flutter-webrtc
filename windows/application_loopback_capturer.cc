@@ -173,6 +173,7 @@ bool ApplicationLoopbackCapturer::Start(
     return false;
   }
 
+  session_failed_ = false;
   running_ = true;
 
   // Cache audio format for FeederThread (mix_format_ lives on this thread).
@@ -413,6 +414,13 @@ IAudioClient* ApplicationLoopbackCapturer::TryInitApplicationLoopback() {
   return result.client;
 }
 
+// A broken session stops both threads, and the owner hears of it once.
+void ApplicationLoopbackCapturer::FailSession() {
+  session_failed_ = true;
+  std::cerr << "[LoopbackCapturer] The audio session ended.\n";
+  ReportError();
+}
+
 // ---------------------------------------------------------------------------
 // CaptureThread
 // Reads WASAPI packets, converts to interleaved stereo int16, and writes to the ring
@@ -465,10 +473,15 @@ void ApplicationLoopbackCapturer::CaptureThread() {
         WaitForSingleObject(buffer_ready_event_, /*dwMilliseconds=*/200);
     if (!running_) break;
     if (wait_result == WAIT_TIMEOUT) continue;
-    if (wait_result != WAIT_OBJECT_0) break;
+    if (wait_result != WAIT_OBJECT_0) {
+      FailSession();
+      break;
+    }
 
     UINT32 packet_size = 0;
-    while (SUCCEEDED(capture_client_->GetNextPacketSize(&packet_size)) &&
+    HRESULT packet_hr = S_OK;
+    while (SUCCEEDED(packet_hr = capture_client_->GetNextPacketSize(
+                         &packet_size)) &&
            packet_size > 0) {
       BYTE*  data       = nullptr;
       UINT32 num_frames = 0;
@@ -476,7 +489,10 @@ void ApplicationLoopbackCapturer::CaptureThread() {
 
       HRESULT hr = capture_client_->GetBuffer(&data, &num_frames, &flags,
                                               nullptr, nullptr);
-      if (FAILED(hr)) break;
+      if (FAILED(hr)) {
+        packet_hr = hr;
+        break;
+      }
 
       if (num_frames > 0) {
         // For silent packets write zeros; for real packets convert to int16.
@@ -525,6 +541,11 @@ void ApplicationLoopbackCapturer::CaptureThread() {
         }
       }
       capture_client_->ReleaseBuffer(num_frames);
+    }
+    // A device that went away or an audio service that restarted ends the session.
+    if (FAILED(packet_hr)) {
+      FailSession();
+      break;
     }
   }
 
@@ -600,9 +621,9 @@ void ApplicationLoopbackCapturer::FeederThread() {
   int64_t  total_frames_del   = 0;     // frames delivered since prebuf end
   uint32_t w_drift_skips      = 0;     // ticks skipped this stats window
 
-  while (running_) {
+  while (running_ && !session_failed_) {
     if (WaitForSingleObject(timer, /*timeout_ms=*/40) == WAIT_FAILED) break;
-    if (!running_) break;
+    if (!running_ || session_failed_) break;
 
     // Measure actual timer interval.
     {

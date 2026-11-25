@@ -139,6 +139,9 @@ FlutterScreenCapture::~FlutterScreenCapture() {
   // From here on libwebrtc callbacks no longer reach this object.
   observer_proxy_->Detach();
 
+  // A capture thread reports errors through this object, so it ends first.
+  loopback_.TakeAny().Stop();
+
   // Stop the capturers that are still running, so that their capture loops
   // end now. They are destroyed later, when the factory is released, and
   // that joins each capture thread.
@@ -478,6 +481,14 @@ void FlutterScreenCapture::OnStop(scoped_refptr<RTCDesktopCapturer> capturer) {
   }
 }
 
+void FlutterScreenCapture::OnLoopbackError(const std::string& source_id) {
+  // Tells Dart the share's system audio stopped while its video goes on.
+  EncodableMap info;
+  info[EncodableValue("event")] = "loopbackError";
+  info[EncodableValue("id")] = EncodableValue(source_id);
+  base_->event_channel()->Success(EncodableValue(info));
+}
+
 void FlutterScreenCapture::OnError(scoped_refptr<RTCDesktopCapturer> capturer) {
   // Tells Dart the share's source is gone, e.g. its window was closed.
   EncodableMap info;
@@ -647,6 +658,10 @@ void FlutterScreenCapture::GetDisplayMedia(
 
     Loopback loopback;
     loopback.capturer = CreateLoopbackCapturer(source_id);
+    if (loopback.capturer) {
+      loopback.capturer->SetOnError(
+          [this, source_id]() { OnLoopbackError(source_id); });
+    }
 
     if (loopback.capturer && loopback.capturer->Start(loopback_source)) {
       loopback.source = loopback_source;
