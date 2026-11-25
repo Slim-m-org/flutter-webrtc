@@ -24,6 +24,7 @@ add_executable(native_tests
   render_limiter_test.cc
   render_mix_test.cc
   capture_chain_realtime_test.cc
+  audio_device_id_test.cc
   shared_state_test.cc
   check_registry.cc
   main.cc
@@ -40,6 +41,7 @@ add_executable(native_tests
   "${ROOT}/common/cpp/src/flutter_render_limiter.cc"
   "${ROOT}/common/cpp/src/flutter_render_gains.cc"
   "${ROOT}/common/cpp/src/flutter_render_mix.cc"
+  "${ROOT}/common/cpp/src/flutter_utf8_sanitize.cc"
 )
 target_include_directories(native_tests PRIVATE
   "${CMAKE_CURRENT_LIST_DIR}/stub"

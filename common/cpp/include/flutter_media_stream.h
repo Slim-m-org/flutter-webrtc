@@ -39,6 +39,10 @@ class FlutterMediaStream {
   void SelectAudioInput(const std::string& device_id,
                         std::unique_ptr<MethodResultProxy> result);
 
+  // Replies with the id of the device the system default is, or null.
+  void GetDefaultAudioDevice(bool capture,
+                             std::unique_ptr<MethodResultProxy> result);
+
   void MediaStreamGetTracks(const std::string& stream_id,
                             std::unique_ptr<MethodResultProxy> result);
 

@@ -5,6 +5,7 @@
 
 #include "audio_device_lookup.h"
 #include "audio_ducking_opt_out.h"
+#include "flutter_audio_device_id.h"
 #include "flutter_utf8_sanitize.h"
 #include "task_runner.h"
 
@@ -17,10 +18,7 @@ namespace flutter_webrtc_plugin {
 namespace {
 
 std::string SanitizeDeviceIdFromAudioBuffers(const char* name, const char* guid) {
-  const std::string raw = (guid != nullptr && strlen(guid) > 0)
-                              ? std::string(guid)
-                              : std::string(name != nullptr ? name : "");
-  return SanitizeUtf8ForFlutter(raw);
+  return AudioDeviceIdFromBuffers(name, guid);
 }
 
 std::string SanitizeLabel(const char* name) {
@@ -584,6 +582,18 @@ void FlutterMediaStream::SelectAudioInput(
   }
   OptOutOfAudioDucking();
   result->Success();
+}
+
+void FlutterMediaStream::GetDefaultAudioDevice(
+    bool capture,
+    std::unique_ptr<MethodResultProxy> result) {
+  const int index = base_->DefaultAudioDeviceIndex(capture);
+  if (index < 0) {
+    result->Success();
+    return;
+  }
+  result->Success(EncodableValue(AudioDeviceIdAt(
+      *base_->audio_device_, capture, static_cast<uint16_t>(index))));
 }
 
 void FlutterMediaStream::MediaStreamGetTracks(
