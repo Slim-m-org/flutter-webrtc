@@ -23,9 +23,10 @@ void slimm_chain_initialize(int sample_rate_hz, int num_channels) {
   CaptureChain::Instance()->Initialize(sample_rate_hz, num_channels);
 }
 
-void slimm_chain_process(float* buffer, int num_frames) {
-  if (num_frames > kMaxFrameSamples) return;
+int slimm_chain_process(float* buffer, int num_frames) {
+  if (num_frames > kMaxFrameSamples) return 0;
   CaptureChain::Instance()->Process(1, num_frames, num_frames, buffer);
+  return 1;
 }
 
 void slimm_chain_configure(int gate_enabled, float threshold_db, int dynamics,
@@ -58,5 +59,7 @@ int slimm_chain_strong_active(void) {
 }
 
 float* slimm_chain_frame_buffer(void) { return g_frame; }
+
+int slimm_chain_max_frame_samples(void) { return kMaxFrameSamples; }
 
 }  // extern "C"
