@@ -26,11 +26,30 @@ bool AllFinite(const float* x, int n) {
   return true;
 }
 
+#ifdef __EMSCRIPTEN__
+// A frozen clock means a failed model load retries only on an explicit restart, never on a timer.
+int64_t NowMs() { return 0; }
+#else
 int64_t NowMs() {
   using namespace std::chrono;
   return duration_cast<milliseconds>(steady_clock::now().time_since_epoch())
       .count();
 }
+#endif
+
+#ifdef __EMSCRIPTEN__
+// The web worklet has no WASI clock to import, so a frame there is never timed.
+using FrameClock = int;
+FrameClock FrameStart() { return 0; }
+bool OverBudget(FrameClock, int) { return false; }
+#else
+using FrameClock = std::chrono::steady_clock::time_point;
+FrameClock FrameStart() { return std::chrono::steady_clock::now(); }
+bool OverBudget(FrameClock started, int budget_us) {
+  return std::chrono::steady_clock::now() - started >
+         std::chrono::microseconds(budget_us);
+}
+#endif
 
 constexpr float kRampDb = 6.0f;
 
@@ -262,10 +281,9 @@ float NoiseSuppressor::ProcessStrongest(Channel& channel, DeepFilter& deep,
                                         float* out) {
   const float probability = rnnoise_process_frame(
       channel.state, channel.rnnoise_now, channel.in48);
-  const auto started = std::chrono::steady_clock::now();
+  const FrameClock started = FrameStart();
   const bool processed = deep.Process(channel.in48, channel.deep48);
-  const auto spent = std::chrono::steady_clock::now() - started;
-  const bool over = spent > std::chrono::microseconds(tuning_.budget_us);
+  const bool over = OverBudget(started, tuning_.budget_us);
   channel.over_budget_run = over ? channel.over_budget_run + 1 : 0;
   channel.deep_overrun = channel.over_budget_run >= tuning_.overrun_frames;
   if (!processed) {

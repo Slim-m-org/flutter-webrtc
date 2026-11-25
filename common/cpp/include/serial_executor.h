@@ -72,6 +72,17 @@ class SerialExecutor {
   }
 
  private:
+  // Returns true when the tick elapsed first. The web build has no clock to
+  // wait on, and its worker never runs, so it waits untimed.
+  template <typename Ready>
+  bool WaitUntilReady(std::unique_lock<std::mutex>& lock, Ready ready) {
+#ifndef __EMSCRIPTEN__
+    if (wake_handler_) return !cv_.wait_for(lock, kTick, ready);
+#endif
+    cv_.wait(lock, ready);
+    return false;
+  }
+
   void Run() {
     for (;;) {
       std::function<void()> task;
@@ -82,11 +93,7 @@ class SerialExecutor {
           return stopping_ || !tasks_.empty() ||
                  wake_.load(std::memory_order_acquire);
         };
-        if (wake_handler_) {
-          tick = !cv_.wait_for(lock, kTick, ready);
-        } else {
-          cv_.wait(lock, ready);
-        }
+        tick = WaitUntilReady(lock, ready);
         if (stopping_) {
           return;
         }
