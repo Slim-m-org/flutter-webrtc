@@ -60,6 +60,8 @@ add_executable(thread_tests
   serial_executor_test.cc
   request_coalescer_test.cc
   loopback_session_test.cc
+  loopback_downmix_test.cc
+  bounded_task_test.cc
   check_registry.cc
   main.cc
 )

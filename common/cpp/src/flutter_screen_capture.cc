@@ -623,59 +623,41 @@ void FlutterScreenCapture::GetDisplayMedia(
     }
   }
 
-  if (capture_audio) {
-    // Stop any previous loopback session before starting a new one.
-    loopback_.TakeAny().Stop();
+  // A loopback that fails to start leaves the share without audio. It is
+  // handed over with the track that carries it.
+  using AudioStart = std::pair<std::shared_ptr<Loopback>,
+                               scoped_refptr<RTCAudioTrack>>;
+  std::shared_ptr<MethodResultProxy> shared_result(std::move(result));
+  const EncodableMap constraints_copy = constraints;
 
-    // Disable all audio processing for loopback capture.  Echo cancellation,
-    // AGC, and noise suppression are designed for microphone input; applied to
-    // system audio they treat the captured content as echo/noise and destroy it.
-    RTCAudioOptions loopback_opts;
-    loopback_opts.echo_cancellation = false;
-    loopback_opts.auto_gain_control = false;
-    loopback_opts.noise_suppression = false;
-    const std::string loopback_source_label =
-      "screen_loopback_input_" + base_->GenerateUUID();
-    scoped_refptr<RTCAudioSource> loopback_source =
-        base_->factory_->CreateAudioSource(
-            loopback_source_label.c_str(), RTCAudioSource::SourceType::kCustom,
-            loopback_opts);
-
-    std::string audio_uuid = base_->GenerateUUID();
-    scoped_refptr<RTCAudioTrack> audio_track =
-        base_->factory_->CreateAudioTrack(loopback_source, audio_uuid.c_str());
-
-    Loopback loopback;
-    loopback.capturer = CreateLoopbackCapturer(source_id);
-
-    if (loopback.capturer && loopback.capturer->Start(loopback_source)) {
-      loopback.source = loopback_source;
-      loopback.owner = desktop_capturer.get();
-      loopback_.Replace(std::move(loopback)).Stop();
-
+  auto finish = [this, shared_result, stream, params, uuid, desktop_capturer,
+                 constraints_copy, fps, size_limit](AudioStart audio) mutable {
+    const EncodableMap& constraints = constraints_copy;
+    if (audio.first) {
       EncodableMap audio_info;
       audio_info[EncodableValue("id")] =
-          EncodableValue(audio_track->id().std_string());
+          EncodableValue(audio.second->id().std_string());
       audio_info[EncodableValue("label")] =
-          EncodableValue(audio_track->id().std_string());
+          EncodableValue(audio.second->id().std_string());
       audio_info[EncodableValue("kind")] =
-          EncodableValue(audio_track->kind().std_string());
+          EncodableValue(audio.second->kind().std_string());
       audio_info[EncodableValue("enabled")] =
-          EncodableValue(audio_track->enabled());
+          EncodableValue(audio.second->enabled());
 
       EncodableList audioTracks;
       audioTracks.push_back(EncodableValue(audio_info));
       params[EncodableValue("audioTracks")] = EncodableValue(audioTracks);
 
-      stream->AddTrack(audio_track);
-      base_->local_tracks_[audio_track->id().std_string()] = audio_track;
+      audio.first->owner = desktop_capturer.get();
+      auto replaced = std::make_shared<Loopback>(
+          loopback_.Replace(std::move(*audio.first)));
+      PostToWorker([replaced]() { replaced->Stop(); });
+
+      stream->AddTrack(audio.second);
+      base_->local_tracks_[audio.second->id().std_string()] = audio.second;
     } else {
-      // Loopback init failed or not supported — continue without audio.
       params[EncodableValue("audioTracks")] = EncodableValue(EncodableList());
     }
-  } else {
-    params[EncodableValue("audioTracks")] = EncodableValue(EncodableList());
-  }
 
   // VIDEO
 
@@ -732,7 +714,47 @@ void FlutterScreenCapture::GetDisplayMedia(
 
   desktop_capturer->Start(uint32_t(fps));
 
-  result->Success(EncodableValue(params));
+  shared_result->Success(EncodableValue(params));
+  };
+
+  if (!capture_audio) {
+    finish({});
+    return;
+  }
+
+  // Disable all audio processing for loopback capture.  Echo cancellation,
+  // AGC, and noise suppression are designed for microphone input; applied to
+  // system audio they treat the captured content as echo/noise and destroy it.
+  RTCAudioOptions loopback_opts;
+  loopback_opts.echo_cancellation = false;
+  loopback_opts.auto_gain_control = false;
+  loopback_opts.noise_suppression = false;
+  const std::string loopback_source_label =
+      "screen_loopback_input_" + base_->GenerateUUID();
+  scoped_refptr<RTCAudioSource> loopback_source =
+      base_->factory_->CreateAudioSource(loopback_source_label.c_str(),
+                                         RTCAudioSource::SourceType::kCustom,
+                                         loopback_opts);
+
+  const std::string audio_uuid = base_->GenerateUUID();
+  scoped_refptr<RTCAudioTrack> audio_track =
+      base_->factory_->CreateAudioTrack(loopback_source, audio_uuid.c_str());
+
+  // Starting the capture waits on the audio service, so it runs on the
+  // worker and the platform thread answers once it is done.
+  PostToWorker([this, source_id, loopback_source, audio_track,
+                finish = std::move(finish)]() mutable {
+    loopback_.TakeAny().Stop();
+    auto loopback = std::make_shared<Loopback>();
+    loopback->capturer = CreateLoopbackCapturer(source_id);
+    loopback->source = loopback_source;
+    const bool started =
+        loopback->capturer && loopback->capturer->Start(loopback_source);
+    PostResult([finish = std::move(finish), loopback, audio_track,
+                started]() mutable {
+      finish(started ? AudioStart{loopback, audio_track} : AudioStart{});
+    });
+  });
 }
 
 }  // namespace flutter_webrtc_plugin
