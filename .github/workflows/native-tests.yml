@@ -81,7 +81,7 @@ jobs:
     env:
       CC: clang
       CXX: clang++
-      TSAN_OPTIONS: halt_on_error=1 second_deadlock_stack=1
+      TSAN_OPTIONS: halt_on_error=1 second_deadlock_stack=1 suppressions=${{ github.workspace }}/test/native/tsan.supp
       UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1:suppressions=${{ github.workspace }}/test/native/ubsan.supp
       LSAN_OPTIONS: suppressions=${{ github.workspace }}/test/native/lsan.supp
     steps:
