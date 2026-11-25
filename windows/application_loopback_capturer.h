@@ -39,9 +39,11 @@ class ApplicationLoopbackCapturer : public LoopbackCapturer {
 
   void CaptureThread();
   void FeederThread();
+  void FailSession();
 
   scoped_refptr<RTCAudioSource> source_;
   std::atomic<bool> running_{false};
+  std::atomic<bool> session_failed_{false};
   std::thread capture_thread_;
   std::thread feeder_thread_;
 

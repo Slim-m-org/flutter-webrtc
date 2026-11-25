@@ -100,6 +100,11 @@ class DesktopCapturerNative extends DesktopCapturer {
   final StreamController<String> _onCaptureError =
       StreamController.broadcast(sync: true);
 
+  @override
+  StreamController<String> get onLoopbackError => _onLoopbackError;
+  final StreamController<String> _onLoopbackError =
+      StreamController.broadcast(sync: true);
+
   final Map<String, DesktopCapturerSourceNative> _sources = {};
 
   void handleEvent(String event, Map<dynamic, dynamic> map) async {
@@ -131,6 +136,9 @@ class DesktopCapturerNative extends DesktopCapturer {
         break;
       case 'desktopCapturerError':
         _onCaptureError.add(map['id'] as String);
+        break;
+      case 'loopbackError':
+        _onLoopbackError.add(map['id'] as String);
         break;
       case 'desktopSourceNameChanged':
         final source = _sources[map['id'] as String];
