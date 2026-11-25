@@ -68,3 +68,13 @@ TEST(chain_api_runs_rnnoise_when_strong_is_on) {
   CHECK(slimm_chain_dynamics() == 0);
   CHECK(slimm_chain_leveler_gain_db() >= 0.0f);
 }
+
+TEST(chain_api_reports_a_frame_it_cannot_process) {
+  slimm_chain_configure(1, -50.0f, 0, 0, 0);
+  slimm_chain_initialize(48000, 1);
+  const int too_long = slimm_chain_max_frame_samples() + 1;
+  std::vector<float> frame(too_long, 1000.0f);
+  CHECK(slimm_chain_process(frame.data(), too_long) == 0);
+  CHECK(frame[0] == 1000.0f);
+  CHECK(slimm_chain_process(slimm_chain_frame_buffer(), kFrames) == 1);
+}

@@ -69,6 +69,7 @@ public final class CaptureChainProcessing implements AudioProcessingAdapter.Exte
         map.put("levelerGainDb", (double) values[3]);
         map.put("strongNoiseSuppression", values[4] != 0.0f);
         map.put("strongestNoiseSuppression", false);
+        map.put("rejectedFrames", (long) values[5]);
         return map;
     }
 
