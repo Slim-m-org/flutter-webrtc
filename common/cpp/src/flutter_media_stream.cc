@@ -574,6 +574,26 @@ void FlutterMediaStream::SelectAudioInput(
   result->Success();
 }
 
+void FlutterMediaStream::GetDefaultAudioDevice(
+    bool capture,
+    std::unique_ptr<MethodResultProxy> result) {
+  const int index = base_->DefaultAudioDeviceIndex(capture);
+  if (index < 0) {
+    result->Success();
+    return;
+  }
+  char deviceName[256];
+  char deviceGuid[256];
+  const uint16_t i = static_cast<uint16_t>(index);
+  if (capture) {
+    base_->audio_device_->RecordingDeviceName(i, deviceName, deviceGuid);
+  } else {
+    base_->audio_device_->PlayoutDeviceName(i, deviceName, deviceGuid);
+  }
+  result->Success(EncodableValue(
+      SanitizeDeviceIdFromAudioBuffers(deviceName, deviceGuid)));
+}
+
 void FlutterMediaStream::MediaStreamGetTracks(
     const std::string& stream_id,
     std::unique_ptr<MethodResultProxy> result) {
