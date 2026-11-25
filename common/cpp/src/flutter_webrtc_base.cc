@@ -5,6 +5,7 @@
 #include "flutter_render_limiter.h"
 #include "audio_ducking_opt_out.h"
 #include "audio_server_probe.h"
+#include "probe_memo.h"
 #ifdef _WIN32
 #include "default_audio_endpoint.h"
 #endif
@@ -61,7 +62,7 @@ bool FlutterWebRTCBase::EnsureWebRTCInitialized(bool enable_warp,
   if (webrtc_initialized_) {
     return true;
   }
-  if (!AudioServerReachable()) {
+  if (!audio_probe_memo_.Run(AudioServerReachable)) {
     return false;
   }
   webrtc_initialized_ = true;

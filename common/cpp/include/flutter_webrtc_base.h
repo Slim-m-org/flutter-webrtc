@@ -1,6 +1,7 @@
 #ifndef FLUTTER_WEBRTC_BASE_HXX
 #define FLUTTER_WEBRTC_BASE_HXX
 
+#include "probe_memo.h"
 #include "flutter_common.h"
 
 #include <string.h>
@@ -144,6 +145,8 @@ class FlutterWebRTCBase {
 
  protected:
   bool webrtc_initialized_ = false;
+  // A failed audio server probe is remembered briefly so repeated calls fail fast.
+  ProbeMemo audio_probe_memo_{std::chrono::seconds(5)};
   // Whether `enableWARP` was requested; peer connections created afterwards
   // default to DSCP marking. See EnsureWebRTCInitialized().
   bool warp_enabled_ = false;
