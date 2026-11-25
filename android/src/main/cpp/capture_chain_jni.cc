@@ -5,6 +5,8 @@
 #include <atomic>
 
 #include "flutter_capture_chain_api.h"
+#include "flutter_chain_glue.h"
+#include "flutter_chain_glue.h"
 
 namespace {
 
@@ -74,7 +76,7 @@ JNIEXPORT void JNICALL CHAIN_JNI(nativeProcess)(JNIEnv* env, jclass,
   auto* samples = static_cast<float*>(env->GetDirectBufferAddress(buffer));
   const jlong capacity = env->GetDirectBufferCapacity(buffer);
   const jlong floats_available = capacity > 0 ? capacity / 4 : 0;
-  if (samples == nullptr || num_frames <= 0 || floats_available < num_frames) {
+  if (!flutter_webrtc_plugin::FrameFitsBuffer(samples, capacity, num_frames)) {
     g_rejected_frames.fetch_add(1, std::memory_order_relaxed);
     FailClosed(samples, floats_available, num_frames);
     return;
@@ -94,8 +96,8 @@ JNIEXPORT void JNICALL CHAIN_JNI(nativeConfigure)(
   slimm_chain_configure(gate_enabled, threshold_db, dynamics,
                         level_after_suppression, strong);
   // Automatic sensitivity moves the threshold often, so only the stages are logged.
-  const int stages = (gate_enabled ? 1 : 0) | (strong ? 2 : 0) |
-                     (dynamics ? 4 : 0) | (level_after_suppression ? 8 : 0);
+  const int stages = flutter_webrtc_plugin::ChainStageMask(
+      gate_enabled, strong, dynamics, level_after_suppression);
   const bool changed = g_logged_stages.exchange(stages) != stages;
   if (changed) {
     __android_log_print(ANDROID_LOG_INFO, kTag,
