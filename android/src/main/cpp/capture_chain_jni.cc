@@ -4,6 +4,7 @@
 #include <atomic>
 
 #include "flutter_capture_chain_api.h"
+#include "flutter_chain_glue.h"
 
 namespace {
 
@@ -35,8 +36,7 @@ JNIEXPORT void JNICALL CHAIN_JNI(nativeProcess)(JNIEnv* env, jclass,
                                                 jint num_frames) {
   auto* samples = static_cast<float*>(env->GetDirectBufferAddress(buffer));
   const jlong capacity = env->GetDirectBufferCapacity(buffer);
-  if (samples == nullptr || num_frames <= 0 ||
-      capacity < static_cast<jlong>(num_frames) * 4) {
+  if (!flutter_webrtc_plugin::FrameFitsBuffer(samples, capacity, num_frames)) {
     return;
   }
   slimm_chain_process(samples, num_frames);
@@ -53,8 +53,8 @@ JNIEXPORT void JNICALL CHAIN_JNI(nativeConfigure)(
   slimm_chain_configure(gate_enabled, threshold_db, dynamics,
                         level_after_suppression, strong);
   // Automatic sensitivity moves the threshold often, so only the stages are logged.
-  const int stages = (gate_enabled ? 1 : 0) | (strong ? 2 : 0) |
-                     (dynamics ? 4 : 0) | (level_after_suppression ? 8 : 0);
+  const int stages = flutter_webrtc_plugin::ChainStageMask(
+      gate_enabled, strong, dynamics, level_after_suppression);
   if (g_logged_stages.exchange(stages) == stages) return;
   g_logged_first_frame.store(false);
   __android_log_print(ANDROID_LOG_INFO, "CaptureChain",

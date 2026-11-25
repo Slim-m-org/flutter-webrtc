@@ -1,0 +1,3 @@
+# rnnoise quantises its input with a float to int cast; a non-finite sample reaches it only in
+# tests that feed one on purpose, and the chain zeroes the frame that comes out.
+float-cast-overflow:third_party/rnnoise/src/vec_avx.h

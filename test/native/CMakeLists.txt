@@ -20,6 +20,7 @@ add_executable(native_tests
   mic_sample_tap_test.cc
   frame_fit_test.cc
   frame_fit_reference.cc
+  chain_glue_test.cc
   render_limiter_test.cc
   shared_state_test.cc
   check_registry.cc
@@ -54,7 +55,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET slimm_dfn)
     -Wl,--wrap=slimm_dfn_create -Wl,--wrap=slimm_dfn_free)
 endif()
 
-# Apart from native_tests, which replaces operator new as -fsanitize=thread does.
+# Apart from native_tests, which replaces operator new outside a sanitizer build.
 add_executable(thread_tests
   locked_map_test.cc
   serial_executor_test.cc
@@ -149,3 +150,17 @@ set_tests_properties(harness_strict_fails_a_skip PROPERTIES WILL_FAIL TRUE)
 add_test(NAME libwebrtc_download_is_pinned
   COMMAND "${CMAKE_COMMAND}" -DROOT=${ROOT} -DWORK=${CMAKE_CURRENT_BINARY_DIR}/libwebrtc_pin
           -P "${CMAKE_CURRENT_LIST_DIR}/libwebrtc_pin_test.cmake")
+
+# A release build that asks for DeepFilterNet must fail without cargo; an ordinary one only warns.
+# An empty SLIMM_CARGO cache entry stands in for a runner with no cargo.
+set(_probe "${CMAKE_CURRENT_LIST_DIR}/dfn_require_probe")
+add_test(NAME dfn_required_without_cargo_fails
+  COMMAND "${CMAKE_COMMAND}" -S "${_probe}" -B "${CMAKE_CURRENT_BINARY_DIR}/dfn_required"
+          -DSLIMM_REQUIRE_DFN=ON -DSLIMM_CARGO=)
+set_tests_properties(dfn_required_without_cargo_fails PROPERTIES
+  PASS_REGULAR_EXPRESSION "SLIMM_REQUIRE_DFN is set but")
+add_test(NAME dfn_optional_without_cargo_only_warns
+  COMMAND "${CMAKE_COMMAND}" -S "${_probe}" -B "${CMAKE_CURRENT_BINARY_DIR}/dfn_optional"
+          -DSLIMM_CARGO=)
+set_tests_properties(dfn_optional_without_cargo_only_warns PROPERTIES
+  PASS_REGULAR_EXPRESSION "noise suppression[)] not built")

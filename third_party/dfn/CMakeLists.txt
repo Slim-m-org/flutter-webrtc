@@ -1,6 +1,11 @@
 # DeepFilterNet 3 (MIT or Apache-2.0) through tract, as a static library built
 # with cargo. Defines the target slimm_dfn when it can be built and leaves the
 # plugin to build without it otherwise, where "Strongest" falls back to Strong.
+# A release build sets SLIMM_REQUIRE_DFN (option or environment) so a missing cargo fails it.
+option(SLIMM_REQUIRE_DFN "Fail the configure when DeepFilterNet cannot be built" OFF)
+if(DEFINED ENV{SLIMM_REQUIRE_DFN} AND NOT "$ENV{SLIMM_REQUIRE_DFN}" STREQUAL "0")
+  set(SLIMM_REQUIRE_DFN ON)
+endif()
 set(SLIMM_DFN_DIR "${CMAKE_CURRENT_LIST_DIR}")
 
 find_program(SLIMM_CARGO cargo HINTS "$ENV{HOME}/.cargo/bin" "$ENV{USERPROFILE}/.cargo/bin")
@@ -12,7 +17,9 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND CMAKE_GENERATOR_PLATFORM MATCHES
   set(_slimm_dfn_skip "tract has no tested Windows ARM64 build here")
 endif()
 
-if(_slimm_dfn_skip)
+if(_slimm_dfn_skip AND SLIMM_REQUIRE_DFN AND NOT SLIMM_CARGO)
+  message(FATAL_ERROR "flutter_webrtc: SLIMM_REQUIRE_DFN is set but DeepFilterNet cannot be built: ${_slimm_dfn_skip}.")
+elseif(_slimm_dfn_skip)
   message(WARNING "flutter_webrtc: DeepFilterNet (Strongest noise suppression) not built: ${_slimm_dfn_skip}.")
 else()
   set(_slimm_dfn_target_dir "${CMAKE_CURRENT_BINARY_DIR}/slimm_dfn_target")
@@ -28,6 +35,8 @@ else()
             --manifest-path "${SLIMM_DFN_DIR}/Cargo.toml"
     DEPENDS "${SLIMM_DFN_DIR}/Cargo.toml" "${SLIMM_DFN_DIR}/Cargo.lock"
             "${SLIMM_DFN_DIR}/src/lib.rs"
+    # cargo reads rust-toolchain.toml from its working directory, not from the manifest path.
+    WORKING_DIRECTORY "${SLIMM_DFN_DIR}"
     COMMENT "Building DeepFilterNet with cargo"
     VERBATIM
   )

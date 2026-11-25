@@ -14,12 +14,26 @@
 #include "flutter_noise_suppressor.h"
 #include "flutter_rate_converter.h"
 
+// A sanitizer brings its own operator new and delete, so the allocation count is a plain-build check.
+#if defined(__SANITIZE_ADDRESS__) || defined(__SANITIZE_THREAD__)
+#define COUNT_ALLOCATIONS 0
+#elif defined(__has_feature)
+#if __has_feature(address_sanitizer) || __has_feature(thread_sanitizer)
+#define COUNT_ALLOCATIONS 0
+#endif
+#endif
+#ifndef COUNT_ALLOCATIONS
+#define COUNT_ALLOCATIONS 1
+#endif
+
 using flutter_webrtc_plugin::NoiseSuppressor;
 using flutter_webrtc_plugin::RateConverter;
 
 namespace {
 
+#if COUNT_ALLOCATIONS
 long g_allocations = 0;
+#endif
 
 double Rms(const std::vector<float>& x, size_t from, size_t to) {
   double sum = 0.0;
@@ -45,6 +59,7 @@ std::vector<float> Sine(size_t n, int rate, double hz, float amplitude) {
 
 }  // namespace
 
+#if COUNT_ALLOCATIONS
 void* operator new(size_t size) {
   ++g_allocations;
   void* p = std::malloc(size);
@@ -54,6 +69,7 @@ void* operator new(size_t size) {
 
 void operator delete(void* p) noexcept { std::free(p); }
 void operator delete(void* p, size_t) noexcept { std::free(p); }
+#endif
 
 constexpr int kRates[] = {8000, 16000, 24000, 32000, 44100, 48000, 96000};
 
@@ -158,6 +174,7 @@ TEST(strong_off_leaves_audio_alone_and_reports_inactive) {
   CHECK(buffer == before);
 }
 
+#if COUNT_ALLOCATIONS
 TEST(strong_does_not_allocate_after_the_first_frame) {
   for (int rate : kRates) {
     NoiseSuppressor suppressor;
@@ -172,3 +189,4 @@ TEST(strong_does_not_allocate_after_the_first_frame) {
     CHECK(g_allocations == before);
   }
 }
+#endif

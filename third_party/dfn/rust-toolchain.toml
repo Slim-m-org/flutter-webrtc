@@ -1,0 +1,4 @@
+# Pinned so fork CI and every slim-m release build the library with one compiler.
+[toolchain]
+channel = "1.97.1"
+profile = "minimal"

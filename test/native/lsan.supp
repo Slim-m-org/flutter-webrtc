@@ -1,0 +1,2 @@
+# GTestDBus leaves one environment string allocated inside glib for the life of the process.
+leak:libglib-2.0.so
