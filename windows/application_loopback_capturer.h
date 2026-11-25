@@ -37,6 +37,9 @@ class ApplicationLoopbackCapturer : public LoopbackCapturer {
   // Also populates mix_format_.
   IAudioClient* TryInitApplicationLoopback();
 
+  // Frees whatever Start() acquired, on its failure paths and in Stop().
+  void ReleaseResources();
+
   void CaptureThread();
   void FeederThread();
   void FailSession();

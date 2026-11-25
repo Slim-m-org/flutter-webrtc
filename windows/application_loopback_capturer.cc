@@ -2,6 +2,9 @@
 
 #include "application_loopback_capturer.h"
 
+#include "bounded_task.h"
+#include "loopback_downmix.h"
+
 #include <avrt.h>
 #include <chrono>
 #include <cstring>
@@ -63,6 +66,9 @@ class ActivationCompletionHandler
  public:
   UniqueHandle event_{CreateEvent(nullptr, FALSE, FALSE, nullptr)};
   IAudioClient* client_ = nullptr;
+  ~ActivationCompletionHandler() {
+    if (client_) client_->Release();
+  }
   HRESULT activation_result_ = E_FAIL;
 
   // IActivateAudioInterfaceCompletionHandler
@@ -123,18 +129,18 @@ bool ApplicationLoopbackCapturer::Start(
     scoped_refptr<RTCAudioSource> source) {
   if (running_) return true;
 
-    source_ = source;
+  source_ = source;
 
   audio_client_ = TryInitApplicationLoopback();
   if (!audio_client_) {
     std::cerr << "[LoopbackCapturer] ApplicationLoopback init failed.\n";
+    ReleaseResources();
     return false;
   }
 
   buffer_ready_event_ = CreateEvent(nullptr, FALSE, FALSE, nullptr);
   if (buffer_ready_event_ == nullptr) {
-    audio_client_->Release();
-    audio_client_ = nullptr;
+    ReleaseResources();
     return false;
   }
 
@@ -142,10 +148,7 @@ bool ApplicationLoopbackCapturer::Start(
   if (FAILED(hr)) {
     std::cerr << "[LoopbackCapturer] SetEventHandle failed: 0x" << std::hex
               << hr << "\n";
-    audio_client_->Release();
-    audio_client_ = nullptr;
-    CloseHandle(buffer_ready_event_);
-    buffer_ready_event_ = nullptr;
+    ReleaseResources();
     return false;
   }
 
@@ -153,10 +156,7 @@ bool ApplicationLoopbackCapturer::Start(
   if (FAILED(hr)) {
     std::cerr << "[LoopbackCapturer] GetService(IAudioCaptureClient) failed: 0x"
               << std::hex << hr << "\n";
-    audio_client_->Release();
-    audio_client_ = nullptr;
-    CloseHandle(buffer_ready_event_);
-    buffer_ready_event_ = nullptr;
+    ReleaseResources();
     return false;
   }
 
@@ -164,12 +164,7 @@ bool ApplicationLoopbackCapturer::Start(
   if (FAILED(hr)) {
     std::cerr << "[LoopbackCapturer] IAudioClient::Start failed: 0x"
               << std::hex << hr << "\n";
-    capture_client_->Release();
-    capture_client_ = nullptr;
-    audio_client_->Release();
-    audio_client_ = nullptr;
-    CloseHandle(buffer_ready_event_);
-    buffer_ready_event_ = nullptr;
+    ReleaseResources();
     return false;
   }
 
@@ -214,7 +209,10 @@ void ApplicationLoopbackCapturer::Stop() {
   if (feeder_thread_.joinable()) {
     feeder_thread_.join();
   }
+  ReleaseResources();
+}
 
+void ApplicationLoopbackCapturer::ReleaseResources() {
   if (audio_client_) {
     audio_client_->Stop();
     audio_client_->Release();
@@ -233,185 +231,177 @@ void ApplicationLoopbackCapturer::Stop() {
     buffer_ready_event_ = nullptr;
   }
   source_ = nullptr;
-  // std::cout << "[LoopbackCapturer] Capture stopped.\n";
 }
 
 // ---------------------------------------------------------------------------
 // TryInitApplicationLoopback
 // ---------------------------------------------------------------------------
-IAudioClient* ApplicationLoopbackCapturer::TryInitApplicationLoopback() {
-  struct Result {
-    IAudioClient* client = nullptr;
-    WAVEFORMATEX* fmt    = nullptr;
-  };
-  Result result;
-  HANDLE done_event = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+namespace {
 
-  std::thread worker([&result, done_event, this]() {
-    // RoInitialize(MTA) — the real requirement is that the completion handler
-    // supports IAgileObject (see QueryInterface above).  Without that,
-    // ActivateAudioInterfaceAsync returns RO_E_WRONG_THREAD regardless of
-    // the apartment type.
-    HRESULT init_hr = RoInitialize(RO_INIT_MULTITHREADED);
-    if (FAILED(init_hr)) {
-      std::cerr << "[LoopbackCapturer] RoInitialize failed: 0x"
-                << std::hex << init_hr << "\n";
-      SetEvent(done_event);
-      return;
-    }
+struct ActivatedClient {
+  IAudioClient* client = nullptr;
+  WAVEFORMATEX* fmt = nullptr;
+};
 
-    auto* handler = new ActivationCompletionHandler();
+constexpr DWORD kHandlerWaitMs = 3000;
+constexpr std::chrono::milliseconds kActivationBound{4000};
 
-    AUDIOCLIENT_ACTIVATION_PARAMS ap = {};
-    ap.ActivationType = AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK;
-    if (target_pid_ != 0) {
-      // Isolate audio from a specific application.
-      ap.ProcessLoopbackParams.TargetProcessId   = target_pid_;
-      ap.ProcessLoopbackParams.ProcessLoopbackMode =
-          PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE;
-    } else {
-      // Capture all system audio (exclude only our own process).
-      // TargetProcessId=0 returns E_INVALIDARG; use self PID instead.
-      ap.ProcessLoopbackParams.TargetProcessId   = GetCurrentProcessId();
-      ap.ProcessLoopbackParams.ProcessLoopbackMode =
-          PROCESS_LOOPBACK_MODE_EXCLUDE_TARGET_PROCESS_TREE;
-    }
+// The loopback client activated and initialised on the system mix format.
+// Runs on its own thread, which owns every COM object it creates.
+ActivatedClient ActivateLoopbackClient(DWORD target_pid) {
+  // MTA: the handler is agile, so the callback needs no message pump.
+  HRESULT init_hr = RoInitialize(RO_INIT_MULTITHREADED);
+  if (FAILED(init_hr)) {
+    std::cerr << "[LoopbackCapturer] RoInitialize failed: 0x"
+              << std::hex << init_hr << "\n";
+    return {};
+  }
 
-    PROPVARIANT pv;
-    PropVariantInit(&pv);
-    pv.vt             = VT_BLOB;
-    pv.blob.cbSize    = sizeof(ap);
-    pv.blob.pBlobData = reinterpret_cast<BYTE*>(&ap);
-
-    IActivateAudioInterfaceAsyncOperation* async_op = nullptr;
-    HRESULT hr = ActivateAudioInterfaceAsync(
-        VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK,
-        __uuidof(IAudioClient), 
-        &pv, 
-        handler,
-        &async_op
-      );
-
-    if (FAILED(hr)) {
-      std::cerr << "[LoopbackCapturer] ActivateAudioInterfaceAsync failed: 0x"
-                << std::hex << hr << "\n";
-      handler->Release();
-      RoUninitialize();
-      SetEvent(done_event);
-      return;
-    }
-
-
-    // Failed to create the event in the handler — can't continue.
-    // Abort the activation attempt and clean up, which will cause the callback to never fire.
-    if (!handler->event_) {
-      std::cerr << "[LoopbackCapturer] CreateEvent failed for activation handler.\n";
-      handler->Release();
-      RoUninitialize();
-      SetEvent(done_event);
-      return;
-    }
-    // MTA: the callback fires on a threadpool thread — no message pump needed.
-    // wait for the callback to signal completion (or timeout after 5 seconds, which
-    // should never happen under normal circumstances).
-    WaitForSingleObject(handler->event_.get(), 5000);
-    if (async_op) async_op->Release();
-
-    if (FAILED(handler->activation_result_) || !handler->client_) {
-      std::cerr << "[LoopbackCapturer] Activation completed with error: 0x"
-                << std::hex << handler->activation_result_ << "\n";
-      handler->Release();
-      RoUninitialize();
-      SetEvent(done_event);
-      return;
-    }
-
-    IAudioClient* client = handler->client_;
+  auto* handler = new ActivationCompletionHandler();
+  if (!handler->event_) {
+    std::cerr << "[LoopbackCapturer] CreateEvent failed for activation handler.\n";
     handler->Release();
+    RoUninitialize();
+    return {};
+  }
 
-    // GetMixFormat is not supported on the loopback IAudioClient (E_NOTIMPL).
-    // Instead, get the system mix format from the default render endpoint.
-    WAVEFORMATEX* fmt = nullptr;
-    {
-      IMMDeviceEnumerator* enumerator = nullptr;
-      IMMDevice*           device     = nullptr;
-      IAudioClient*        rc         = nullptr;
-      HRESULT fmt_hr = CoCreateInstance(
-          __uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
-          IID_PPV_ARGS(&enumerator));
-      if (SUCCEEDED(fmt_hr))
-        fmt_hr = enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device);
-      if (SUCCEEDED(fmt_hr))
-        fmt_hr = device->Activate(__uuidof(IAudioClient), CLSCTX_ALL,
-                                  nullptr, reinterpret_cast<void**>(&rc));
-      if (SUCCEEDED(fmt_hr))
-        fmt_hr = rc->GetMixFormat(&fmt);
-      if (rc)        rc->Release();
-      if (device)    device->Release();
-      if (enumerator) enumerator->Release();
-      if (FAILED(fmt_hr) || !fmt) {
-        std::cerr << "[LoopbackCapturer] GetMixFormat (render endpoint) failed: 0x"
-                  << std::hex << fmt_hr << "\n";
-        client->Release();
-        RoUninitialize();
-        SetEvent(done_event);
-        return;
-      }
-    }
+  AUDIOCLIENT_ACTIVATION_PARAMS ap = {};
+  ap.ActivationType = AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK;
+  if (target_pid != 0) {
+    ap.ProcessLoopbackParams.TargetProcessId = target_pid;
+    ap.ProcessLoopbackParams.ProcessLoopbackMode =
+        PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE;
+  } else {
+    // TargetProcessId=0 returns E_INVALIDARG; excluding our own tree instead
+    // captures everything else.
+    ap.ProcessLoopbackParams.TargetProcessId = GetCurrentProcessId();
+    ap.ProcessLoopbackParams.ProcessLoopbackMode =
+        PROCESS_LOOPBACK_MODE_EXCLUDE_TARGET_PROCESS_TREE;
+  }
 
-    // Try IAudioClient3 to query the minimum engine period and use it as the
-    // buffer-duration hint.  This reduces capture latency without the risk of
-    // InitializeSharedAudioStream (which does not support loopback flags).
-    // Falls back gracefully to hnsBufferDuration=0 if IAudioClient3 is
-    // unavailable or the query fails.
-    REFERENCE_TIME buffer_duration = 0;
-    {
-      IAudioClient3* client3 = nullptr;
-      if (SUCCEEDED(client->QueryInterface(IID_PPV_ARGS(&client3)))) {
-        UINT32 default_period = 0, fundamental_period = 0,
-               min_period = 0,     max_period = 0;
-        if (SUCCEEDED(client3->GetSharedModeEnginePeriod(
-                fmt, &default_period, &fundamental_period,
-                &min_period, &max_period))) {
-          // Convert frames -> 100-ns units.
-          buffer_duration = static_cast<REFERENCE_TIME>(
-              10000000LL * min_period / fmt->nSamplesPerSec);
-          // std::cout << "[LoopbackCapturer] IAudioClient3 min period: "
-          //           << min_period << " frames ("
-          //           << buffer_duration / 10000 << " ms).\n";
-        }
-        client3->Release();
-      }
-    }
+  PROPVARIANT pv;
+  PropVariantInit(&pv);
+  pv.vt             = VT_BLOB;
+  pv.blob.cbSize    = sizeof(ap);
+  pv.blob.pBlobData = reinterpret_cast<BYTE*>(&ap);
 
-    hr = client->Initialize(
-        AUDCLNT_SHAREMODE_SHARED,
-        AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
-        buffer_duration, 0, fmt, nullptr);
-    if (FAILED(hr)) {
-      std::cerr << "[LoopbackCapturer] IAudioClient::Initialize failed: 0x"
-                << std::hex << hr << "\n";
-      CoTaskMemFree(fmt);
+  IActivateAudioInterfaceAsyncOperation* async_op = nullptr;
+  HRESULT hr = ActivateAudioInterfaceAsync(
+      VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK, __uuidof(IAudioClient), &pv,
+      handler, &async_op);
+  if (FAILED(hr)) {
+    std::cerr << "[LoopbackCapturer] ActivateAudioInterfaceAsync failed: 0x"
+              << std::hex << hr << "\n";
+    handler->Release();
+    RoUninitialize();
+    return {};
+  }
+
+  const DWORD waited = WaitForSingleObject(handler->event_.get(), kHandlerWaitMs);
+  if (async_op) async_op->Release();
+  if (waited != WAIT_OBJECT_0) {
+    // The handler stays alive until the pending operation lets go of it.
+    std::cerr << "[LoopbackCapturer] Activation did not complete in time.\n";
+    handler->Release();
+    RoUninitialize();
+    return {};
+  }
+
+  if (FAILED(handler->activation_result_) || !handler->client_) {
+    std::cerr << "[LoopbackCapturer] Activation completed with error: 0x"
+              << std::hex << handler->activation_result_ << "\n";
+    handler->Release();
+    RoUninitialize();
+    return {};
+  }
+
+  IAudioClient* client = handler->client_;
+  handler->client_ = nullptr;
+  handler->Release();
+
+  // GetMixFormat is not supported on the loopback IAudioClient (E_NOTIMPL),
+  // so the format comes from the default render endpoint.
+  WAVEFORMATEX* fmt = nullptr;
+  {
+    IMMDeviceEnumerator* enumerator = nullptr;
+    IMMDevice*           device     = nullptr;
+    IAudioClient*        rc         = nullptr;
+    HRESULT fmt_hr = CoCreateInstance(
+        __uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
+        IID_PPV_ARGS(&enumerator));
+    if (SUCCEEDED(fmt_hr))
+      fmt_hr = enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device);
+    if (SUCCEEDED(fmt_hr))
+      fmt_hr = device->Activate(__uuidof(IAudioClient), CLSCTX_ALL,
+                                nullptr, reinterpret_cast<void**>(&rc));
+    if (SUCCEEDED(fmt_hr))
+      fmt_hr = rc->GetMixFormat(&fmt);
+    if (rc)        rc->Release();
+    if (device)    device->Release();
+    if (enumerator) enumerator->Release();
+    if (FAILED(fmt_hr) || !fmt) {
+      std::cerr << "[LoopbackCapturer] GetMixFormat (render endpoint) failed: 0x"
+                << std::hex << fmt_hr << "\n";
       client->Release();
       RoUninitialize();
-      SetEvent(done_event);
-      return;
+      return {};
     }
+  }
 
-    result.client = client;
-    result.fmt    = fmt;
-    // std::cout << "[LoopbackCapturer] ApplicationLoopback active.\n";
+  // The engine's minimum period as the buffer-duration hint lowers capture
+  // latency; 0 is the fallback when IAudioClient3 or the query is missing.
+  REFERENCE_TIME buffer_duration = 0;
+  {
+    IAudioClient3* client3 = nullptr;
+    if (SUCCEEDED(client->QueryInterface(IID_PPV_ARGS(&client3)))) {
+      UINT32 default_period = 0, fundamental_period = 0,
+             min_period = 0,     max_period = 0;
+      if (SUCCEEDED(client3->GetSharedModeEnginePeriod(
+              fmt, &default_period, &fundamental_period,
+              &min_period, &max_period))) {
+        buffer_duration = static_cast<REFERENCE_TIME>(
+            10000000LL * min_period / fmt->nSamplesPerSec);
+      }
+      client3->Release();
+    }
+  }
+
+  hr = client->Initialize(
+      AUDCLNT_SHAREMODE_SHARED,
+      AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
+      buffer_duration, 0, fmt, nullptr);
+  if (FAILED(hr)) {
+    std::cerr << "[LoopbackCapturer] IAudioClient::Initialize failed: 0x"
+              << std::hex << hr << "\n";
+    CoTaskMemFree(fmt);
+    client->Release();
     RoUninitialize();
-    SetEvent(done_event);
-  });
+    return {};
+  }
 
-  WaitForSingleObject(done_event, 7000);
-  CloseHandle(done_event);
-  worker.join();
+  RoUninitialize();
+  return {client, fmt};
+}
 
-  if (!result.client) return nullptr;
-  mix_format_ = result.fmt;
-  return result.client;
+void ReleaseActivated(ActivatedClient& activated) {
+  if (activated.client) activated.client->Release();
+  if (activated.fmt) CoTaskMemFree(activated.fmt);
+  activated = {};
+}
+
+}  // namespace
+
+IAudioClient* ApplicationLoopbackCapturer::TryInitApplicationLoopback() {
+  const DWORD pid = target_pid_;
+  auto activated = RunBounded<ActivatedClient>(
+      kActivationBound, [pid] { return ActivateLoopbackClient(pid); },
+      ReleaseActivated);
+  if (!activated || !activated->client) {
+    if (activated) ReleaseActivated(*activated);
+    return nullptr;
+  }
+  mix_format_ = activated->fmt;
+  return activated->client;
 }
 
 // A broken session stops both threads, and the owner hears of it once.
@@ -465,6 +455,15 @@ void ApplicationLoopbackCapturer::CaptureThread() {
   // 2. Calculate exactly how many bytes to jump per sample
   const size_t bytes_per_sample = bits / 8;
 
+  uint32_t channel_mask = 0;
+  if (mix_format_->wFormatTag == WAVE_FORMAT_EXTENSIBLE) {
+    channel_mask =
+        reinterpret_cast<WAVEFORMATEXTENSIBLE*>(mix_format_)->dwChannelMask;
+  }
+  const std::vector<DownmixGain> gains =
+      StereoDownmixGains(in_channels, channel_mask);
+  std::vector<int16_t> samples(in_channels);
+
   // Temporary conversion buffer (reused across packets).
   std::vector<int16_t> conv;
 
@@ -503,20 +502,12 @@ void ApplicationLoopbackCapturer::CaptureThread() {
           conv.resize(num_frames * out_channels);
           
           for (size_t f = 0; f < num_frames; ++f) {
-            // Find the start of this frame in the raw WASAPI buffer
             const BYTE* frame_ptr = data + (f * in_channels * bytes_per_sample);
-            
-            // Extract the Left channel
-            int16_t left = extractor(frame_ptr);
-            
-            // Extract the Right channel (or duplicate Left if mono input)
-            int16_t right = (in_channels > 1) 
-                ? extractor(frame_ptr + bytes_per_sample) 
-                : left;
-                
-            // Keep the two channels apart; the encoder sends them as stereo.
-            conv[f * out_channels]     = left;
-            conv[f * out_channels + 1] = right;
+            for (size_t c = 0; c < in_channels; ++c) {
+              samples[c] = extractor(frame_ptr + c * bytes_per_sample);
+            }
+            DownmixFrameToStereo(samples.data(), gains, &conv[f * out_channels],
+                                 &conv[f * out_channels + 1]);
           }
         }
         {
