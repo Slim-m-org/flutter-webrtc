@@ -84,7 +84,7 @@ void MicSampleTap::Feed(const float* frame, int num_frames) {
   }
 }
 
-std::vector<int16_t> MicSampleTap::Take() {
+std::vector<int16_t> MicSampleTap::Take(const std::function<void()>& between) {
   size_t room = 0;
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -93,7 +93,10 @@ std::vector<int16_t> MicSampleTap::Take() {
   // Reserved off the lock: what is kept after the swap never exceeds `room`.
   std::vector<int16_t> out;
   if (armed_.load()) out.reserve(room);
+  if (between) between();
   std::lock_guard<std::mutex> lock(mutex_);
+  // A Start in between raised the limit, and Feed must not grow the buffer.
+  if (out.capacity() < limit_ - kept_) out.reserve(limit_ - kept_);
   out.swap(samples_);
   return out;
 }

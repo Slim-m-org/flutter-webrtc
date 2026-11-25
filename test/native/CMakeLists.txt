@@ -70,6 +70,8 @@ add_executable(thread_tests
   loopback_session_test.cc
   loopback_downmix_test.cc
   bounded_task_test.cc
+  com_scope_test.cc
+  alive_guard_test.cc
   check_registry.cc
   main.cc
 )

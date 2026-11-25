@@ -84,17 +84,27 @@ std::string Pactl_Out(const std::string& args) {
   return out;
 }
 
+std::string TrimmedLine(const std::string& text) {
+  const auto end = text.find_first_of("\r\n");
+  return end == std::string::npos ? text : text.substr(0, end);
+}
+
 // Two private null sinks, "cap_a" and "cap_b", with cap_a the default.
 struct Sinks {
   Sinks() {
     module_a = std::atoi(Pactl_Out("load-module module-null-sink sink_name=cap_a").c_str());
     module_b = std::atoi(Pactl_Out("load-module module-null-sink sink_name=cap_b").c_str());
+    original_default = TrimmedLine(Pactl_Out("get-default-sink"));
     Pactl("set-default-sink cap_a");
   }
   ~Sinks() {
     if (module_b > 0) Pactl("unload-module " + std::to_string(module_b));
     if (module_a > 0) Pactl("unload-module " + std::to_string(module_a));
+    if (!original_default.empty()) {
+      Pactl("set-default-sink " + original_default);
+    }
   }
+  std::string original_default;
   int module_a = 0;
   int module_b = 0;
 };
@@ -203,6 +213,10 @@ TEST(PulseCapture_StartFailsWithoutAnErrorReportWhenTheMonitorIsMissing) {
 
 int main(int argc, char** argv) {
   ParseArgs(argc, argv);
+  const char* opt_in = std::getenv("PULSE_CAPTURE_TESTS_PRIVATE");
+  if (!opt_in || std::string(opt_in) != "1") {
+    return SuiteSkipped("set PULSE_CAPTURE_TESTS_PRIVATE=1 on a private server");
+  }
   if (!ServerUp()) return SuiteSkipped("no PulseAudio or PipeWire server");
   RunRegistry();
   return Finish();

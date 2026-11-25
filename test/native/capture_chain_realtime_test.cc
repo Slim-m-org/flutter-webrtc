@@ -143,6 +143,23 @@ TEST(strongest_that_failed_a_frame_loads_again_after_the_backoff) {
   CHECK(loads.count == 2);
 }
 
+TEST(strongest_that_keeps_overrunning_is_given_up_on_until_capture_restarts) {
+  Loads loads;
+  NoiseSuppressor s;
+  Started(s, Tuned(loads, 1000, 5ms, false));
+  const auto until = std::chrono::steady_clock::now() + 1500ms;
+  while (std::chrono::steady_clock::now() < until) {
+    Frames(s, 1);
+    std::this_thread::sleep_for(5ms);
+  }
+  CHECK(loads.count == 4);
+  CHECK(!s.StrongestActive());
+  s.Restart();
+  std::this_thread::sleep_for(300ms);
+  Frames(s, 1);
+  CHECK(loads.count == 5);
+}
+
 TEST(strongest_that_overran_loads_again_after_the_backoff) {
   Loads loads;
   NoiseSuppressor s;

@@ -36,7 +36,8 @@ The Windows linker has no `--wrap`, so those cases are Linux only.
 It is built when glib is found, and prints `skip` when there is no `dbus-daemon`.
 
 `pulse_capture_tests` drives the Linux system-audio capturer against a live PulseAudio or PipeWire server, with two null sinks it loads itself, and prints `skip` when there is none.
-Run it on a private server, never the desktop's: it loads and unloads sinks and changes the default sink.
+Run it on a private server, never the desktop's: it loads and unloads sinks and changes the default sink, which it restores afterwards.
+It skips unless `PULSE_CAPTURE_TESTS_PRIVATE=1` is set, so it cannot touch a desktop session by accident.
 `-DPULSE_CAPTURE_TESTS=ON` adds it to ctest.
 
 `frame_fit_bench [frames]` times the share size limit's scale for the 4K, ultrawide, 16:10 and super ultrawide screens at their tier sizes.

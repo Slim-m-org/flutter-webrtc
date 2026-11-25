@@ -3,6 +3,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <mutex>
 #include <vector>
 
@@ -40,7 +41,9 @@ class MicSampleTap {
   void Feed(const float* frame, int num_frames);
 
   // Everything kept since the last call, which the caller now owns.
-  std::vector<int16_t> Take();
+  std::vector<int16_t> Take() { return Take(nullptr); }
+  // `between` runs after the room is read and before the swap, so a test can land a Start there.
+  std::vector<int16_t> Take(const std::function<void()>& between);
 
   // Frames skipped because they could not be brought to 48 kHz.
   int SkippedFrames() const { return skipped_.load(); }

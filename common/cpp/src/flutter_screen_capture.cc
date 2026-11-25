@@ -18,12 +18,34 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
+#include <objbase.h>
 #include <windows.h>
 #endif
+
+#include "com_scope.h"
 
 namespace flutter_webrtc_plugin {
 
 namespace {
+
+#ifdef _WIN32
+// The loopback capture talks to the audio service through COM, and the worker
+// runs it off the platform thread, so the worker joins the multithreaded apartment.
+struct WorkerComApi {
+  static bool Enter() {
+    const HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    return SUCCEEDED(hr);
+  }
+  static void Leave() { CoUninitialize(); }
+};
+using WorkerComScope = ComScope<WorkerComApi>;
+#else
+struct NoComApi {
+  static bool Enter() { return false; }
+  static void Leave() {}
+};
+using WorkerComScope = ComScope<NoComApi>;
+#endif
 
 // Waits, for a bounded time, until `capturer` holds the only reference left,
 // so that the capturer is destroyed on the calling thread when this returns
@@ -135,6 +157,7 @@ FlutterScreenCapture::FlutterScreenCapture(FlutterWebRTCBase* base)
 
 FlutterScreenCapture::~FlutterScreenCapture() {
   closing_ = true;
+  alive_->store(false);
 
   // From here on libwebrtc callbacks no longer reach this object.
   observer_proxy_->Detach();
@@ -191,6 +214,7 @@ void FlutterScreenCapture::PostToWorker(std::function<void()> task) {
 }
 
 void FlutterScreenCapture::WorkerLoop() {
+  WorkerComScope com;
   for (;;) {
     std::function<void()> task;
     {
@@ -222,7 +246,7 @@ void FlutterScreenCapture::PostResult(std::function<void()> reply) {
     return;
   }
   if (base_->task_runner_) {
-    base_->task_runner_->EnqueueTask(std::move(reply));
+    base_->task_runner_->EnqueueTask(RunWhileAlive(alive_, std::move(reply)));
   } else {
     reply();
   }
@@ -648,7 +672,6 @@ void FlutterScreenCapture::GetDisplayMedia(
 
   auto finish = [this, shared_result, stream, params, uuid, desktop_capturer,
                  constraints_copy, fps, size_limit](AudioStart audio) mutable {
-    const EncodableMap& constraints = constraints_copy;
     if (audio.first) {
       EncodableMap audio_info;
       audio_info[EncodableValue("id")] =
@@ -678,9 +701,10 @@ void FlutterScreenCapture::GetDisplayMedia(
   // VIDEO
 
   EncodableMap video_constraints;
-  auto it = constraints.find(EncodableValue("video"));
-  if (it != constraints.end() && TypeIs<EncodableMap>(it->second)) {
-    video_constraints = GetValue<EncodableMap>(it->second);
+  auto video_it = constraints_copy.find(EncodableValue("video"));
+  if (video_it != constraints_copy.end() &&
+      TypeIs<EncodableMap>(video_it->second)) {
+    video_constraints = GetValue<EncodableMap>(video_it->second);
   }
 
   desktop_capturer->RegisterDesktopCapturerObserver(observer_proxy_);
@@ -759,7 +783,7 @@ void FlutterScreenCapture::GetDisplayMedia(
   // Starting the capture waits on the audio service, so it runs on the
   // worker and the platform thread answers once it is done.
   PostToWorker([this, source_id, loopback_source, audio_track,
-                finish = std::move(finish)]() mutable {
+                start_finish = std::move(finish)]() mutable {
     loopback_.TakeAny().Stop();
     auto loopback = std::make_shared<Loopback>();
     loopback->capturer = CreateLoopbackCapturer(source_id);
@@ -770,9 +794,9 @@ void FlutterScreenCapture::GetDisplayMedia(
     loopback->source = loopback_source;
     const bool started =
         loopback->capturer && loopback->capturer->Start(loopback_source);
-    PostResult([finish = std::move(finish), loopback, audio_track,
+    PostResult([reply_finish = std::move(start_finish), loopback, audio_track,
                 started]() mutable {
-      finish(started ? AudioStart{loopback, audio_track} : AudioStart{});
+      reply_finish(started ? AudioStart{loopback, audio_track} : AudioStart{});
     });
   });
 }

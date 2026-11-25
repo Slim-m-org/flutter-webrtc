@@ -13,6 +13,8 @@
 #include <thread>
 #include <vector>
 
+#include "alive_guard.h"
+
 #include "loopback_capturer.h"
 #include "loopback_session.h"
 #include "rtc_audio_source.h"
@@ -93,6 +95,10 @@ class FlutterScreenCapture : public MediaListObserver,
 
   // Set when teardown starts. Worker tasks no longer reply after that.
   std::atomic<bool> closing_{false};
+
+  // Cleared first in the destructor, so replies already queued on the task
+  // runner do nothing instead of touching a destroyed object.
+  AliveToken alive_ = MakeAliveToken();
 
   // What libwebrtc holds as the media list and capturer observer, in place of
   // `this`. libwebrtc keeps raw observer pointers and may call them after

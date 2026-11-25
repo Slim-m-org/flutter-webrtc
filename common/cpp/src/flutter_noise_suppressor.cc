@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cmath>
 #include <future>
+#include <limits>
 #include <mutex>
 
 #include "rnnoise.h"
@@ -103,6 +104,7 @@ NoiseSuppressor::~NoiseSuppressor() {
 void NoiseSuppressor::ConfigureStrongest(bool enabled) {
   std::lock_guard<std::mutex> lock(load_mutex_);
   strongest_.store(enabled);
+  overruns_.store(0);
   if (!enabled) {
     delete pending_.exchange(nullptr);
     model_failed_.store(false);
@@ -190,12 +192,20 @@ void NoiseSuppressor::UpdateModel() {
   if (model_ == nullptr) RequestSettle();
 }
 
+int64_t NoiseSuppressor::RetryAtMs(Retire why) {
+  if (why != Retire::kOverrun) return NowMs() + tuning_.retry_ms;
+  const int overruns = overruns_.fetch_add(1) + 1;
+  if (overruns > tuning_.max_overrun_retries) {
+    return std::numeric_limits<int64_t>::max();
+  }
+  const int shift = std::min(overruns - 1, 10);
+  return NowMs() + static_cast<int64_t>(tuning_.overrun_retry_ms) * (int64_t{1} << shift);
+}
+
 void NoiseSuppressor::RetireModel(Retire why) {
   retired_.store(model_.release());
   if (why != Retire::kSwitchedOff) {
-    const int wait_ms = why == Retire::kOverrun ? tuning_.overrun_retry_ms
-                                                : tuning_.retry_ms;
-    retry_at_ms_.store(NowMs() + wait_ms);
+    retry_at_ms_.store(RetryAtMs(why));
     model_failed_.store(true);
   }
   RequestSettle();

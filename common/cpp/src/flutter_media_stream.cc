@@ -3,6 +3,7 @@
 #include <memory>
 #include <thread>
 
+#include "audio_device_lookup.h"
 #include "audio_ducking_opt_out.h"
 #include "flutter_utf8_sanitize.h"
 #include "task_runner.h"
@@ -530,8 +531,13 @@ void FlutterMediaStream::SelectAudioOutput(
   int playout_devices = base_->audio_device_->PlayoutDevices();
   bool found = false;
   // "default" asks for whatever the system default speaker is right now.
-  if (device_id == "default" && base_->SelectDefaultPlayoutDevice()) {
-    OptOutOfAudioDucking();
+  bool default_selected = false;
+  if (AnswerDefaultOutputRequest(
+          device_id, [&] { return base_->SelectDefaultPlayoutDevice(); },
+          &default_selected)) {
+    if (default_selected) {
+      OptOutOfAudioDucking();
+    }
     result->Success();
     return;
   }

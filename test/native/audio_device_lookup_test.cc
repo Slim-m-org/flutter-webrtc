@@ -40,4 +40,29 @@ TEST(AudioDeviceLookup_AnUnreadableEntryIsSkipped) {
   CHECK(index == 2);
 }
 
+TEST(AudioDeviceLookup_DefaultOutputIsAnsweredWhenItResolves) {
+  bool selected = false;
+  const bool answered = flutter_webrtc_plugin::AnswerDefaultOutputRequest(
+      "default", [] { return true; }, &selected);
+  CHECK(answered);
+  CHECK(selected);
+}
+
+TEST(AudioDeviceLookup_DefaultOutputIsStillAnsweredWhenItDoesNotResolve) {
+  bool selected = true;
+  const bool answered = flutter_webrtc_plugin::AnswerDefaultOutputRequest(
+      "default", [] { return false; }, &selected);
+  CHECK(answered);
+  CHECK(!selected);
+}
+
+TEST(AudioDeviceLookup_ANamedOutputIsLeftToTheDeviceList) {
+  bool selected = false;
+  bool asked = false;
+  const bool answered = flutter_webrtc_plugin::AnswerDefaultOutputRequest(
+      "{0.0.0.00000000}.{abc}", [&] { asked = true; return true; }, &selected);
+  CHECK(!answered);
+  CHECK(!asked);
+}
+
 }  // namespace

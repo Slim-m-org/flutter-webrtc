@@ -44,11 +44,14 @@ class NoiseSuppressor {
     bool allow_model = true;
     // A frame of the model that takes longer than budget_us this many times
     // in a row hands the call to rnnoise for overrun_retry_ms; a failed one
-    // or a failed load waits retry_ms. Capture restarting retries at once.
+    // or a failed load waits retry_ms. Each repeated overrun doubles the wait,
+    // and after max_overrun_retries the model stays off until capture restarts
+    // or Strongest is switched off and on.
     int budget_us = 8000;
     int overrun_frames = 30;
     int retry_ms = 10000;
     int overrun_retry_ms = 60000;
+    int max_overrun_retries = 3;
     // Stands in for DeepFilter::Load, for tests.
     std::function<std::unique_ptr<DeepFilter>(const DeepFilter::Params&)>
         loader;
@@ -84,6 +87,7 @@ class NoiseSuppressor {
   // load a failed model again. Safe on the audio thread.
   void Restart() {
     was_active_ = false;
+    overruns_.store(0);
     restart_requested_.store(true);
     worker_.Wake();
   }
@@ -111,6 +115,7 @@ class NoiseSuppressor {
 
   void UpdateModel();
   void RetireModel(Retire why);
+  int64_t RetryAtMs(Retire why);
   void RequestSettle();
   void Tick();
   void RetryFailedLoad();
@@ -134,6 +139,7 @@ class NoiseSuppressor {
   std::atomic<int64_t> retry_at_ms_{0};
   std::atomic<bool> settle_requested_{false};
   std::atomic<bool> restart_requested_{false};
+  std::atomic<int> overruns_{0};
   std::mutex load_mutex_;
   // Guarded by load_mutex_.
   bool loading_ = false;

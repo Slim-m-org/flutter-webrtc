@@ -12,6 +12,8 @@
 #include "flutter_noise_suppressor.h"
 #include "flutter_voice_dynamics.h"
 
+extern thread_local long g_thread_allocations;
+
 namespace {
 
 using flutter_webrtc_plugin::CaptureChain;
@@ -124,4 +126,16 @@ TEST(tap_sees_the_frame_before_the_chain_changes_it) {
     }
   }
   CHECK(differing == 0);
+}
+
+TEST(tap_feed_never_allocates_when_a_start_lands_between_the_halves_of_a_take) {
+  MicSampleTap* tap = MicSampleTap::Instance();
+  tap->SetCaptureRate(48000);
+  tap->Start(1);
+  tap->Take([&] { tap->Start(3); });
+  const std::vector<float> frame = Tone(48000, 1000.0f, 0);
+  const long before = g_thread_allocations;
+  for (int i = 0; i < 250; ++i) tap->Feed(frame.data(), 480);
+  CHECK(g_thread_allocations == before);
+  tap->Stop();
 }

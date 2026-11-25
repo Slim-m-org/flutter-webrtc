@@ -17,6 +17,18 @@ int IndexOfDeviceGuid(int count, const std::string& guid, GuidAt guid_at) {
   return -1;
 }
 
+// True when `device_id` asks for the system default speaker. Whether the
+// default resolves or not the request is answered as done, because an
+// unresolved default leaves the current speaker in place.
+template <typename SelectDefault>
+bool AnswerDefaultOutputRequest(const std::string& device_id,
+                                SelectDefault select_default,
+                                bool* selected) {
+  if (device_id != "default") return false;
+  *selected = select_default();
+  return true;
+}
+
 }  // namespace flutter_webrtc_plugin
 
 #endif  // FLUTTER_WEBRTC_PLUGIN_AUDIO_DEVICE_LOOKUP_H_
