@@ -46,7 +46,9 @@ void RenderLimiter::Process(int /*num_bands*/, int num_frames,
                             int buffer_size, float* buffer) {
   if (buffer == nullptr || num_frames <= 0) return;
   const float boost = boost_.load();
-  const int channels = (std::min)(channels_.load(), buffer_size / num_frames);
+  // libwebrtc passes one channel's size as buffer_size, so it can only rule out a short buffer.
+  if (buffer_size < num_frames) return;
+  const int channels = channels_.load();
   // Channel 0 of the full-band buffer: each channel is num_frames long at any band count.
   for (int c = 0; c < channels; ++c) {
     Apply(buffer + static_cast<size_t>(c) * num_frames, num_frames, boost);

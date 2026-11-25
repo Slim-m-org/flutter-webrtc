@@ -2,6 +2,7 @@
 #include <chrono>
 #include <future>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
 
@@ -55,6 +56,28 @@ class CountingTrack : public libwebrtc::RTCAudioTrack {
   int calls = 0;
 };
 
+// Holds its first armed SetVolume until released, then stores the value it was given.
+class GatedTrack : public libwebrtc::RTCAudioTrack {
+ public:
+  void SetVolume(double volume) override {
+    if (armed.exchange(false)) {
+      entered.set_value();
+      release.get_future().wait();
+    }
+    std::lock_guard<std::mutex> lock(mutex);
+    applied = volume;
+  }
+  double Applied() {
+    std::lock_guard<std::mutex> lock(mutex);
+    return applied;
+  }
+  std::atomic<bool> armed{false};
+  std::promise<void> entered;
+  std::promise<void> release;
+  std::mutex mutex;
+  double applied = -1.0;
+};
+
 }  // namespace
 
 TEST(RenderMix_SetVolumeRunsWithTheMixUnlocked) {
@@ -88,4 +111,21 @@ TEST(RenderMix_GainReachesTheTrackAndTheLimiterBoost) {
   CHECK(flutter_webrtc_plugin::RenderLimiter::Instance()->Boost() == 1.0f);
   CHECK(other->last_volume == 1.0);
   mix->TrackRemoved("mix-test-c");
+}
+
+TEST(RenderMix_ALateOlderPushDoesNotOverwriteANewerVolume) {
+  RenderMix* mix = RenderMix::Instance();
+  auto gated = std::make_shared<GatedTrack>();
+  auto other = std::make_shared<CountingTrack>();
+  mix->TrackAdded("mix-test-g", gated);
+  mix->TrackAdded("mix-test-h", other);
+  gated->armed = true;
+  std::thread older([&] { mix->SetGain("mix-test-h", 2.0); });
+  CHECK(gated->entered.get_future().wait_for(2s) == std::future_status::ready);
+  CHECK(mix->SetGain("mix-test-h", 1.0));
+  gated->release.set_value();
+  older.join();
+  CHECK(gated->Applied() == 1.0);
+  mix->TrackRemoved("mix-test-g");
+  mix->TrackRemoved("mix-test-h");
 }
