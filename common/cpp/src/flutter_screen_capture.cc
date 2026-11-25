@@ -369,15 +369,20 @@ void FlutterScreenCapture::ResetDesktopSources(
     std::unique_ptr<MethodResultProxy> result) {
   // Dropping the cached lists makes the next enumeration open a fresh
   // capture session (on Linux/Wayland, a new xdg-desktop-portal prompt).
-  {
-    std::lock_guard<std::mutex> build_lock(build_mutex_);
-    medialist_.clear();
-    std::lock_guard<std::mutex> lock(sources_mutex_);
-    sources_.clear();
-  }
-  auto map = EncodableMap();
-  map[EncodableValue("result")] = true;
-  result->Success(EncodableValue(map));
+  std::shared_ptr<MethodResultProxy> shared_result(std::move(result));
+  PostToWorker([this, shared_result]() {
+    {
+      std::lock_guard<std::mutex> build_lock(build_mutex_);
+      medialist_.clear();
+      std::lock_guard<std::mutex> lock(sources_mutex_);
+      sources_.clear();
+    }
+    auto map = EncodableMap();
+    map[EncodableValue("result")] = true;
+    PostResult([shared_result, map]() {
+      shared_result->Success(EncodableValue(map));
+    });
+  });
 }
 
 void FlutterScreenCapture::UpdateDesktopSources(

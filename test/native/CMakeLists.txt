@@ -65,6 +65,7 @@ add_executable(thread_tests
   request_coalescer_test.cc
   trailing_throttle_test.cc
   audio_device_lookup_test.cc
+  probe_memo_test.cc
   loopback_session_test.cc
   loopback_downmix_test.cc
   bounded_task_test.cc

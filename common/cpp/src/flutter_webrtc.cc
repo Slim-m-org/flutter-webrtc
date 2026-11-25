@@ -44,7 +44,12 @@ void FlutterWebRTC::HandleMethodCall(
     // here rather than in the constructor.
     RememberInitializeOptions(findBoolean(options, "enableWARP"),
                               findBoolean(options, "zeroPlayoutDelay"));
-    EnsureWebRTCInitialized(requested_warp_, requested_zero_playout_delay_);
+    if (!EnsureWebRTCInitialized(requested_warp_,
+                                 requested_zero_playout_delay_)) {
+      result->Error("AudioServerUnavailable",
+                    "No audio server is running, so a call cannot start");
+      return;
+    }
     result->Success();
     return;
   }
