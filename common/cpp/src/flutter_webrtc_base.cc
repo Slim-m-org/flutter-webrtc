@@ -3,6 +3,7 @@
 #include "flutter_data_channel.h"
 #include "flutter_capture_chain.h"
 #include "flutter_render_limiter.h"
+#include "audio_device_lookup.h"
 #include "audio_ducking_opt_out.h"
 #include "audio_server_probe.h"
 #ifdef _WIN32
@@ -129,20 +130,52 @@ void FlutterWebRTCBase::SelectPlayoutDevice(uint16_t index) {
   char name[256] = {0};
   char guid[256] = {0};
   audio_device_->PlayoutDeviceName(index, name, guid);
-  if (!playout_guid_.empty() && playout_guid_ == guid) return;
+  // The same device at a different index is a real change: the module reads
+  // the list by index each time playout starts.
+  if (!playout_guid_.empty() && playout_guid_ == guid &&
+      playout_index_ == index) {
+    return;
+  }
   audio_device_->SetPlayoutDevice(index);
   playout_guid_ = guid;
+  playout_index_ = index;
 #ifdef _WIN32
-  if (recording_index_ >= 0) {
-    audio_device_->SetRecordingDevice(static_cast<uint16_t>(recording_index_));
-  }
+  ReselectRecordingDevice();
 #endif
 }
 
 void FlutterWebRTCBase::SelectRecordingDevice(uint16_t index) {
   if (!audio_device_) return;
+  char name[256] = {0};
+  char guid[256] = {0};
+  audio_device_->RecordingDeviceName(index, name, guid);
   audio_device_->SetRecordingDevice(index);
-  recording_index_ = index;
+  recording_guid_ = guid;
+}
+
+bool FlutterWebRTCBase::SelectDefaultPlayoutDevice() {
+  const int index = DefaultAudioDeviceIndex(false);
+  if (index < 0) return false;
+  SelectPlayoutDevice(static_cast<uint16_t>(index));
+  return true;
+}
+
+void FlutterWebRTCBase::ReselectRecordingDevice() {
+  if (recording_guid_.empty()) return;
+  const int index = IndexOfDeviceGuid(
+      audio_device_->RecordingDevices(), recording_guid_,
+      [this](int i, std::string* guid) {
+        char name[256] = {0};
+        char current[256] = {0};
+        if (audio_device_->RecordingDeviceName(static_cast<uint16_t>(i), name,
+                                               current) != 0) {
+          return false;
+        }
+        *guid = current;
+        return true;
+      });
+  if (index < 0) return;
+  audio_device_->SetRecordingDevice(static_cast<uint16_t>(index));
 }
 
 int FlutterWebRTCBase::DefaultAudioDeviceIndex(bool capture) {
