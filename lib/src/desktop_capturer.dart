@@ -63,6 +63,10 @@ abstract class DesktopCapturer {
   /// shared window that was closed.
   StreamController<String> get onCaptureError => throw UnimplementedError();
 
+  /// The source id of a share whose system audio stopped while the share
+  /// itself goes on, such as after the audio service restarted.
+  StreamController<String> get onLoopbackError => throw UnimplementedError();
+
   ///Get the screen source of the specified types
   Future<List<DesktopCapturerSource>> getSources({
     required List<SourceType> types,

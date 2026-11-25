@@ -1,0 +1,2 @@
+# glib hands memory between the caller and its gdbus worker through futex-based locks and queues that TSan cannot see, so it reports malloc against free with no code of ours in the stack.
+race:libglib-2.0.so

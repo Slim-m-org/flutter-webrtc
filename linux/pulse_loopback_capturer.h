@@ -4,40 +4,22 @@
 #ifdef __linux__
 
 #include <atomic>
+#include <cstdint>
 #include <string>
-#include <thread>
+#include <vector>
+
+#include <pulse/pulseaudio.h>
 
 #include "loopback_capturer.h"
 
-// Forward-declare the libpulse simple handle so this header does not require
-// the pulse dev headers to be present just to include it. The .cc pulls in
-// <pulse/simple.h> behind the HAVE_LIBPULSE guard.
-struct pa_simple;
-
 namespace flutter_webrtc_plugin {
 
-// Linux PulseAudio / PipeWire (pulse compat) implementation of
-// LoopbackCapturer.
+// Linux PulseAudio / PipeWire (pulse compat) LoopbackCapturer.
 //
-// Captures the default sink's MONITOR source so that "system audio" (whatever
-// is currently playing out of the default output) is streamed into the WebRTC
-// RTCAudioSource, mirroring the Windows WASAPI ApplicationLoopbackCapturer.
-//
-// Design note vs. Windows:
-//   The Windows capturer needs a ring buffer + a separate feeder thread + drift
-//   compensation because WASAPI loopback delivers irregularly batched packets
-//   and reports the render engine's native mix format (float32 / int24 / etc).
-//   On PulseAudio we request the exact target format (S16LE, 48 kHz, stereo)
-//   from the server and let pa_simple_read block-and-pace the capture: each
-//   read returns exactly one 10 ms frame (480 stereo samples) at real time, so
-//   the blocking read IS the clock. That removes the need for the ring buffer,
-//   the feeder thread, and the drift logic. One capture thread suffices.
-//
-//   A PipeWire-native backend (libpipewire pw_stream on the monitor node) is a
-//   possible future alternative; libpulse is chosen here for portability
-//   because PipeWire ships a PulseAudio compatibility layer and pure-PulseAudio
-//   systems are still common. `parec --device=<sink>.monitor` proved the path
-//   works in the spike.
+// Records the default sink's monitor on a pa_threaded_mainloop, so stopping
+// never waits on a blocked read, and follows the default sink when it changes.
+// The capture stream asks for exactly 48 kHz stereo s16le, so the server
+// converts and each 10 ms of data is one CaptureFrame.
 class PulseLoopbackCapturer : public LoopbackCapturer {
  public:
   explicit PulseLoopbackCapturer(const std::string& source_id);
@@ -46,31 +28,47 @@ class PulseLoopbackCapturer : public LoopbackCapturer {
   bool Start(scoped_refptr<RTCAudioSource> source) override;
   void Stop() override;
 
+  // False once the audio session broke or the capturer was stopped.
+  bool IsRunning() const { return running_; }
+
  private:
-  // Capture thread: pa_simple_read loop feeding CaptureFrame.
-  void CaptureThread();
+  static void OnContextState(pa_context* context, void* userdata);
+  static void OnSubscribe(pa_context* context,
+                          pa_subscription_event_type_t event, uint32_t index,
+                          void* userdata);
+  static void OnServerInfo(pa_context* context, const pa_server_info* info,
+                           void* userdata);
+  static void OnSinkInfo(pa_context* context, const pa_sink_info* info, int eol,
+                         void* userdata);
+  static void OnStreamState(pa_stream* stream, void* userdata);
+  static void OnStreamRead(pa_stream* stream, size_t bytes, void* userdata);
 
-  // Resolves the default sink's monitor source name via a short-lived
-  // introspection context (pa_mainloop + pa_context). Returns the empty
-  // string on failure. The simple API alone cannot query server defaults, so
-  // this runs first, then the capture stream is opened on the resolved name.
-  std::string ResolveDefaultMonitorSource();
+  // The methods below run on the mainloop thread, or under its lock.
+  void FollowDefaultSink();
+  void ConnectStream(const std::string& monitor);
+  void DropStream();
+  void Feed(const uint8_t* data, size_t bytes);
+  void Fail(const char* reason);
 
-  // Desktop source ID passed from getDisplayMedia. On Windows this selects a
-  // per-window PID; on Linux there is no equivalent per-window system-audio
-  // isolation via the pulse monitor, so it is retained only for interface
-  // parity and currently unused (whole default-sink monitor is captured).
+  // Desktop source id from getDisplayMedia; the whole default monitor is
+  // captured on Linux, so it is kept for interface parity only.
   std::string source_id_;
-
   scoped_refptr<RTCAudioSource> source_;
+
+  pa_threaded_mainloop* mainloop_ = nullptr;
+  pa_context* context_ = nullptr;
+  pa_stream* stream_ = nullptr;
+
+  // A named monitor from SLIMM_SHARE_AUDIO_SOURCE is never retargeted.
+  bool pinned_ = false;
+  std::string connected_monitor_;
+  int failed_connects_ = 0;
+  std::vector<uint8_t> pending_;
+
   std::atomic<bool> running_{false};
-  std::thread capture_thread_;
-
-  // libpulse simple record handle bound to the monitor source.
-  pa_simple* simple_ = nullptr;
-
-  // Resolved monitor source name (e.g. "alsa_output....monitor").
-  std::string monitor_source_name_;
+  std::atomic<bool> stream_ready_{false};
+  std::atomic<bool> failed_{false};
+  bool was_running_ = false;
 };
 
 }  // namespace flutter_webrtc_plugin

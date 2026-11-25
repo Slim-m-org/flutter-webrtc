@@ -3,7 +3,9 @@
 #include <memory>
 #include <thread>
 
+#include "audio_device_lookup.h"
 #include "audio_ducking_opt_out.h"
+#include "flutter_audio_device_id.h"
 #include "flutter_utf8_sanitize.h"
 #include "task_runner.h"
 
@@ -16,10 +18,7 @@ namespace flutter_webrtc_plugin {
 namespace {
 
 std::string SanitizeDeviceIdFromAudioBuffers(const char* name, const char* guid) {
-  const std::string raw = (guid != nullptr && strlen(guid) > 0)
-                              ? std::string(guid)
-                              : std::string(name != nullptr ? name : "");
-  return SanitizeUtf8ForFlutter(raw);
+  return AudioDeviceIdFromBuffers(name, guid);
 }
 
 std::string SanitizeLabel(const char* name) {
@@ -529,6 +528,17 @@ void FlutterMediaStream::SelectAudioOutput(
   char deviceGuid[256];
   int playout_devices = base_->audio_device_->PlayoutDevices();
   bool found = false;
+  // "default" asks for whatever the system default speaker is right now.
+  bool default_selected = false;
+  if (AnswerDefaultOutputRequest(
+          device_id, [&] { return base_->SelectDefaultPlayoutDevice(); },
+          &default_selected)) {
+    if (default_selected) {
+      OptOutOfAudioDucking();
+    }
+    result->Success();
+    return;
+  }
   for (uint16_t i = 0; i < playout_devices; i++) {
     base_->audio_device_->PlayoutDeviceName(i, deviceName, deviceGuid);
     std::string cur_device_id =
@@ -572,6 +582,18 @@ void FlutterMediaStream::SelectAudioInput(
   }
   OptOutOfAudioDucking();
   result->Success();
+}
+
+void FlutterMediaStream::GetDefaultAudioDevice(
+    bool capture,
+    std::unique_ptr<MethodResultProxy> result) {
+  const int index = base_->DefaultAudioDeviceIndex(capture);
+  if (index < 0) {
+    result->Success();
+    return;
+  }
+  result->Success(EncodableValue(AudioDeviceIdAt(
+      *base_->audio_device_, capture, static_cast<uint16_t>(index))));
 }
 
 void FlutterMediaStream::MediaStreamGetTracks(

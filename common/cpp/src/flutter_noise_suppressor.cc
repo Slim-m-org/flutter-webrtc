@@ -1,8 +1,10 @@
 #include "flutter_noise_suppressor.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <future>
+#include <limits>
 #include <mutex>
 
 #include "rnnoise.h"
@@ -23,6 +25,31 @@ bool AllFinite(const float* x, int n) {
   }
   return true;
 }
+
+#ifdef __EMSCRIPTEN__
+// A frozen clock means a failed model load retries only on an explicit restart, never on a timer.
+int64_t NowMs() { return 0; }
+#else
+int64_t NowMs() {
+  using namespace std::chrono;
+  return duration_cast<milliseconds>(steady_clock::now().time_since_epoch())
+      .count();
+}
+#endif
+
+#ifdef __EMSCRIPTEN__
+// The web worklet has no WASI clock to import, so a frame there is never timed.
+using FrameClock = int;
+FrameClock FrameStart() { return 0; }
+bool OverBudget(FrameClock, int) { return false; }
+#else
+using FrameClock = std::chrono::steady_clock::time_point;
+FrameClock FrameStart() { return std::chrono::steady_clock::now(); }
+bool OverBudget(FrameClock started, int budget_us) {
+  return std::chrono::steady_clock::now() - started >
+         std::chrono::microseconds(budget_us);
+}
+#endif
 
 constexpr float kRampDb = 6.0f;
 
@@ -54,6 +81,7 @@ struct NoiseSuppressor::Channel {
 
   void ResetStrongest() {
     cover.Reset();
+    over_budget_run = 0;
     weight = 0.0f;
     probability = 0.0f;
     std::fill(rnnoise_late, rnnoise_late + kFrameSize, 0.0f);
@@ -73,6 +101,8 @@ struct NoiseSuppressor::Channel {
   float weight = 0.0f;
   float probability = 0.0f;
   bool deep_failed = false;
+  bool deep_overrun = false;
+  int over_budget_run = 0;
 };
 
 NoiseSuppressor* NoiseSuppressor::Instance() {
@@ -80,7 +110,9 @@ NoiseSuppressor* NoiseSuppressor::Instance() {
   return suppressor;
 }
 
-NoiseSuppressor::NoiseSuppressor() = default;
+NoiseSuppressor::NoiseSuppressor() {
+  worker_.SetWakeHandler([this] { Tick(); });
+}
 
 NoiseSuppressor::~NoiseSuppressor() {
   worker_.Stop();
@@ -91,6 +123,7 @@ NoiseSuppressor::~NoiseSuppressor() {
 void NoiseSuppressor::ConfigureStrongest(bool enabled) {
   std::lock_guard<std::mutex> lock(load_mutex_);
   strongest_.store(enabled);
+  overruns_.store(0);
   if (!enabled) {
     delete pending_.exchange(nullptr);
     model_failed_.store(false);
@@ -117,19 +150,20 @@ void NoiseSuppressor::StartLoad() {
     return;
   }
   loading_ = true;
-  worker_.Post([this, params = tuning_.model, allow = tuning_.allow_model] {
-    LoadModel(params, allow);
-  });
+  worker_.Post([this, tuning = tuning_] { LoadModel(tuning); });
 }
 
-void NoiseSuppressor::LoadModel(const DeepFilter::Params& params,
-                                bool allow_model) {
-  std::unique_ptr<DeepFilter> loaded =
-      allow_model ? DeepFilter::Load(params) : nullptr;
+void NoiseSuppressor::LoadModel(const StrongestTuning& tuning) {
+  std::unique_ptr<DeepFilter> loaded;
+  if (tuning.allow_model) {
+    loaded = tuning.loader ? tuning.loader(tuning.model)
+                           : DeepFilter::Load(tuning.model);
+  }
   std::lock_guard<std::mutex> lock(load_mutex_);
   loading_ = false;
   if (!strongest_.load()) return;
   if (loaded == nullptr) {
+    retry_at_ms_.store(NowMs() + tuning.retry_ms);
     model_failed_.store(true);
     return;
   }
@@ -145,21 +179,55 @@ void NoiseSuppressor::Settle() {
   StartLoad();
 }
 
+// Runs on the worker, which the audio thread wakes instead of posting to.
+void NoiseSuppressor::Tick() {
+  if (settle_requested_.exchange(false)) Settle();
+  RetryFailedLoad();
+}
+
+void NoiseSuppressor::RetryFailedLoad() {
+  const bool restarted = restart_requested_.exchange(false);
+  if (!model_failed_.load()) return;
+  if (!restarted && NowMs() < retry_at_ms_.load()) return;
+  std::lock_guard<std::mutex> lock(load_mutex_);
+  if (!strongest_.load()) return;
+  model_failed_.store(false);
+  StartLoad();
+}
+
+void NoiseSuppressor::RequestSettle() {
+  settle_requested_.store(true);
+  worker_.Wake();
+}
+
 void NoiseSuppressor::UpdateModel() {
   if (!strongest_.load()) {
-    if (model_ != nullptr) RetireModel(false);
+    if (model_ != nullptr) RetireModel(Retire::kSwitchedOff);
     return;
   }
   if (model_ != nullptr || pending_.load() == nullptr) return;
   model_held_.store(true);
   model_.reset(pending_.exchange(nullptr));
-  if (model_ == nullptr) worker_.Post([this] { Settle(); });
+  if (model_ == nullptr) RequestSettle();
 }
 
-void NoiseSuppressor::RetireModel(bool failed) {
+int64_t NoiseSuppressor::RetryAtMs(Retire why) {
+  if (why != Retire::kOverrun) return NowMs() + tuning_.retry_ms;
+  const int overruns = overruns_.fetch_add(1) + 1;
+  if (overruns > tuning_.max_overrun_retries) {
+    return std::numeric_limits<int64_t>::max();
+  }
+  const int shift = std::min(overruns - 1, 10);
+  return NowMs() + static_cast<int64_t>(tuning_.overrun_retry_ms) * (int64_t{1} << shift);
+}
+
+void NoiseSuppressor::RetireModel(Retire why) {
   retired_.store(model_.release());
-  if (failed) model_failed_.store(true);
-  worker_.Post([this] { Settle(); });
+  if (why != Retire::kSwitchedOff) {
+    retry_at_ms_.store(RetryAtMs(why));
+    model_failed_.store(true);
+  }
+  RequestSettle();
 }
 
 // Allocates only when the capture rate changes.
@@ -213,7 +281,12 @@ float NoiseSuppressor::ProcessStrongest(Channel& channel, DeepFilter& deep,
                                         float* out) {
   const float probability = rnnoise_process_frame(
       channel.state, channel.rnnoise_now, channel.in48);
-  if (!deep.Process(channel.in48, channel.deep48)) {
+  const FrameClock started = FrameStart();
+  const bool processed = deep.Process(channel.in48, channel.deep48);
+  const bool over = OverBudget(started, tuning_.budget_us);
+  channel.over_budget_run = over ? channel.over_budget_run + 1 : 0;
+  channel.deep_overrun = channel.over_budget_run >= tuning_.overrun_frames;
+  if (!processed) {
     channel.deep_failed = true;
     std::copy(channel.rnnoise_now, channel.rnnoise_now + kFrameSize, out);
     return probability;
@@ -259,9 +332,13 @@ float NoiseSuppressor::Process(float* buffer, int num_frames) {
 
   DeepFilter* deep = model_.get();
   channel_->deep_failed = false;
+  channel_->deep_overrun = false;
   const float probability = ProcessChannel(*channel_, buffer, num_frames, deep);
-  if (channel_->deep_failed) RetireModel(true);
-  strongest_active_.store(deep != nullptr && !channel_->deep_failed);
+  const bool retire = channel_->deep_failed || channel_->deep_overrun;
+  if (retire) {
+    RetireModel(channel_->deep_failed ? Retire::kFailed : Retire::kOverrun);
+  }
+  strongest_active_.store(deep != nullptr && !retire);
   return probability;
 }
 

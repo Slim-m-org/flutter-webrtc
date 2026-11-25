@@ -35,6 +35,11 @@ The Windows linker has no `--wrap`, so those cases are Linux only.
 `portal_guard_tests` runs the Linux portal session guard on a private D-Bus session bus.
 It is built when glib is found, and prints `skip` when there is no `dbus-daemon`.
 
+`pulse_capture_tests` drives the Linux system-audio capturer against a live PulseAudio or PipeWire server, with two null sinks it loads itself, and prints `skip` when there is none.
+Run it on a private server, never the desktop's: it loads and unloads sinks and changes the default sink, which it restores afterwards.
+It skips unless `PULSE_CAPTURE_TESTS_PRIVATE=1` is set, so it cannot touch a desktop session by accident.
+`-DPULSE_CAPTURE_TESTS=ON` adds it to ctest.
+
 `frame_fit_bench [frames]` times the share size limit's scale for the 4K, ultrawide, 16:10 and super ultrawide screens at their tier sizes.
 It prints the median milliseconds per frame of today's scaler, of the first one it replaced (`frame_fit_reference.cc`), and of the copy into a libwebrtc frame that follows either.
 The tests hold today's scaler to within one level of that first one on every sample.

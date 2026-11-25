@@ -20,7 +20,11 @@ add_executable(native_tests
   mic_sample_tap_test.cc
   frame_fit_test.cc
   frame_fit_reference.cc
+  chain_glue_test.cc
   render_limiter_test.cc
+  render_mix_test.cc
+  capture_chain_realtime_test.cc
+  audio_device_id_test.cc
   shared_state_test.cc
   check_registry.cc
   main.cc
@@ -36,8 +40,11 @@ add_executable(native_tests
   "${ROOT}/common/cpp/src/flutter_frame_fit.cc"
   "${ROOT}/common/cpp/src/flutter_render_limiter.cc"
   "${ROOT}/common/cpp/src/flutter_render_gains.cc"
+  "${ROOT}/common/cpp/src/flutter_render_mix.cc"
+  "${ROOT}/common/cpp/src/flutter_utf8_sanitize.cc"
 )
 target_include_directories(native_tests PRIVATE
+  "${CMAKE_CURRENT_LIST_DIR}/stub"
   "${ROOT}/common/cpp/portable"
   "${ROOT}/common/cpp/include"
   "${ROOT}/linux/flutter/include"
@@ -54,12 +61,19 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET slimm_dfn)
     -Wl,--wrap=slimm_dfn_create -Wl,--wrap=slimm_dfn_free)
 endif()
 
-# Apart from native_tests, which replaces operator new as -fsanitize=thread does.
+# Apart from native_tests, which replaces operator new outside a sanitizer build.
 add_executable(thread_tests
   locked_map_test.cc
   serial_executor_test.cc
   request_coalescer_test.cc
+  trailing_throttle_test.cc
+  audio_device_lookup_test.cc
+  probe_memo_test.cc
   loopback_session_test.cc
+  loopback_downmix_test.cc
+  bounded_task_test.cc
+  com_scope_test.cc
+  alive_guard_test.cc
   check_registry.cc
   main.cc
 )
@@ -125,6 +139,28 @@ if(TARGET PkgConfig::GIO)
   target_link_libraries(portal_guard_tests PRIVATE PkgConfig::GIO Threads::Threads)
 endif()
 
+# The Linux system-audio capturer against a live PulseAudio or PipeWire server, so it only
+# runs from ctest with -DPULSE_CAPTURE_TESTS=ON, on a host that has one (see README).
+if(PkgConfig_FOUND)
+  pkg_check_modules(PULSE IMPORTED_TARGET libpulse libpulse-simple)
+endif()
+if(TARGET PkgConfig::PULSE AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  add_executable(pulse_capture_tests
+    pulse_capture_test.cc
+    check_registry.cc
+    "${ROOT}/linux/pulse_loopback_capturer.cc"
+  )
+  target_compile_definitions(pulse_capture_tests PRIVATE HAVE_LIBPULSE)
+  target_include_directories(pulse_capture_tests PRIVATE
+    "${CMAKE_CURRENT_LIST_DIR}/pulse"
+    "${CMAKE_CURRENT_LIST_DIR}/stub"
+    "${CMAKE_CURRENT_LIST_DIR}"
+    "${ROOT}/common/cpp/include"
+    "${ROOT}/linux"
+  )
+  target_link_libraries(pulse_capture_tests PRIVATE PkgConfig::PULSE Threads::Threads)
+endif()
+
 # A binary whose only test skips, to check how the harness reports and counts one.
 add_executable(harness_probe harness_probe.cc check_registry.cc)
 
@@ -141,6 +177,10 @@ add_test(NAME thread_tests COMMAND thread_tests ${_strict_flag})
 if(TARGET portal_guard_tests)
   add_test(NAME portal_guard_tests COMMAND portal_guard_tests ${_strict_flag})
 endif()
+option(PULSE_CAPTURE_TESTS "Run pulse_capture_tests, which need a PulseAudio or PipeWire server" OFF)
+if(PULSE_CAPTURE_TESTS AND TARGET pulse_capture_tests)
+  add_test(NAME pulse_capture_tests COMMAND pulse_capture_tests ${_strict_flag})
+endif()
 add_test(NAME harness_reports_a_skip COMMAND harness_probe)
 set_tests_properties(harness_reports_a_skip PROPERTIES
   PASS_REGULAR_EXPRESSION "skip +probe_skips.*0 failure\\(s\\), 1 skipped")
@@ -149,3 +189,17 @@ set_tests_properties(harness_strict_fails_a_skip PROPERTIES WILL_FAIL TRUE)
 add_test(NAME libwebrtc_download_is_pinned
   COMMAND "${CMAKE_COMMAND}" -DROOT=${ROOT} -DWORK=${CMAKE_CURRENT_BINARY_DIR}/libwebrtc_pin
           -P "${CMAKE_CURRENT_LIST_DIR}/libwebrtc_pin_test.cmake")
+
+# A release build that asks for DeepFilterNet must fail without cargo; an ordinary one only warns.
+# An empty SLIMM_CARGO cache entry stands in for a runner with no cargo.
+set(_probe "${CMAKE_CURRENT_LIST_DIR}/dfn_require_probe")
+add_test(NAME dfn_required_without_cargo_fails
+  COMMAND "${CMAKE_COMMAND}" -S "${_probe}" -B "${CMAKE_CURRENT_BINARY_DIR}/dfn_required"
+          -DSLIMM_REQUIRE_DFN=ON -DSLIMM_CARGO=)
+set_tests_properties(dfn_required_without_cargo_fails PROPERTIES
+  PASS_REGULAR_EXPRESSION "SLIMM_REQUIRE_DFN is set but")
+add_test(NAME dfn_optional_without_cargo_only_warns
+  COMMAND "${CMAKE_COMMAND}" -S "${_probe}" -B "${CMAKE_CURRENT_BINARY_DIR}/dfn_optional"
+          -DSLIMM_CARGO=)
+set_tests_properties(dfn_optional_without_cargo_only_warns PROPERTIES
+  PASS_REGULAR_EXPRESSION "noise suppression[)] not built")

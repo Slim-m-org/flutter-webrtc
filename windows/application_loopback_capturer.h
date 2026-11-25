@@ -37,11 +37,16 @@ class ApplicationLoopbackCapturer : public LoopbackCapturer {
   // Also populates mix_format_.
   IAudioClient* TryInitApplicationLoopback();
 
+  // Frees whatever Start() acquired, on its failure paths and in Stop().
+  void ReleaseResources();
+
   void CaptureThread();
   void FeederThread();
+  void FailSession();
 
   scoped_refptr<RTCAudioSource> source_;
   std::atomic<bool> running_{false};
+  std::atomic<bool> session_failed_{false};
   std::thread capture_thread_;
   std::thread feeder_thread_;
 

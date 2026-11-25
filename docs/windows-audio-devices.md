@@ -106,8 +106,8 @@ What the module does touch:
 
 Found by reading the code; none is fixed here because the fix is either outside the plugin or not small and safe.
 
-1. Endpoint indexes go stale on hot plug. With an index selected the module re-reads the collection at each `InitPlayout` / `InitMicrophone` (`audio_device_core_win.cc` lines 670-672 and 742-744), so plugging in or removing a device can silently point the stored index at a different endpoint. The app should reselect by id on every device change. `RTCAudioDevice::OnDeviceChange` exists for this.
-2. The plugin does not follow a changed Windows default device. The defaults are resolved once at startup, and the microphone again only when `getUserMedia` runs without ids.
+1. Endpoint indexes go stale on hot plug. With an index selected the module re-reads the collection at each `InitPlayout` / `InitMicrophone` (`audio_device_core_win.cc` lines 670-672 and 742-744), so plugging in or removing a device can silently point the stored index at a different endpoint. The app should reselect by id on every device change. `RTCAudioDevice::OnDeviceChange` exists for this. The plugin's own re-apply is safe: a playout switch finds the microphone again by its GUID and skips it when it is gone, and a speaker that moved to another index is selected again.
+2. The plugin follows a changed Windows default speaker only when asked: `selectAudioOutput` with the id `default` resolves the current default endpoint and selects it. The defaults are otherwise resolved once at startup, and the microphone again only when `getUserMedia` runs without ids.
 3. Falling back to the communications role (and therefore ducking) when no default endpoint could be resolved at startup, described above.
 4. Hardware mute is invisible to the app (see above). The level meter reads about -100 dB when it happens, which the app could use to warn the user.
 5. Not established: whether libwebrtc's analog gain control moves the Windows microphone level through `SetMicrophoneVolume`. I could not find the setting in `webrtc_voice_engine.cc`. It is worth a test on a headset, since that would change the headset's own volume.

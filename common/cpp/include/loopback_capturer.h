@@ -1,8 +1,12 @@
 #ifndef LOOPBACK_CAPTURER_H_
 #define LOOPBACK_CAPTURER_H_
 
+#include <atomic>
+#include <functional>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <utility>
 
 #include "rtc_audio_source.h"
 #include "rtc_types.h"
@@ -15,7 +19,7 @@ using namespace libwebrtc;
 //
 // Concrete implementations:
 //   windows/application_loopback_capturer.h  — Windows WASAPI
-//   linux/  (future)                         — PulseAudio / PipeWire
+//   linux/pulse_loopback_capturer.h          — PulseAudio / PipeWire
 class LoopbackCapturer {
  public:
   virtual ~LoopbackCapturer() = default;
@@ -26,6 +30,35 @@ class LoopbackCapturer {
 
   // Stop capturing and clean up platform resources.
   virtual void Stop() = 0;
+
+  // Called at most once, from a capture thread, when the platform audio session
+  // broke and no audio will follow. Set it before Start; it must not call back
+  // into the capturer.
+  using ErrorCallback = std::function<void()>;
+  void SetOnError(ErrorCallback on_error) {
+    std::lock_guard<std::mutex> lock(error_mutex_);
+    on_error_ = std::move(on_error);
+  }
+
+ protected:
+  void ReportError() {
+    if (error_reported_.exchange(true)) {
+      return;
+    }
+    ErrorCallback on_error;
+    {
+      std::lock_guard<std::mutex> lock(error_mutex_);
+      on_error = on_error_;
+    }
+    if (on_error) {
+      on_error();
+    }
+  }
+
+ private:
+  std::mutex error_mutex_;
+  ErrorCallback on_error_;
+  std::atomic<bool> error_reported_{false};
 };
 
 }  // namespace flutter_webrtc_plugin

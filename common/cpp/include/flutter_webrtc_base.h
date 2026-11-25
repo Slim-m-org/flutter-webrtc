@@ -1,6 +1,7 @@
 #ifndef FLUTTER_WEBRTC_BASE_HXX
 #define FLUTTER_WEBRTC_BASE_HXX
 
+#include "probe_memo.h"
 #include "flutter_common.h"
 
 #include <string.h>
@@ -84,11 +85,17 @@ class FlutterWebRTCBase {
 
   // Selects a speaker; choosing the one already selected does nothing.
   // Windows' built-in echo canceller ends a running capture whenever playout
-  // restarts, so a real change there restarts the microphone after it.
+  // restarts, so a real change there restarts the microphone after it, found
+  // again by its GUID because list indexes shift when a device is plugged or
+  // removed. A microphone that is no longer listed is left alone.
   void SelectPlayoutDevice(uint16_t index);
 
   // Selects a microphone and remembers it for SelectPlayoutDevice.
   void SelectRecordingDevice(uint16_t index);
+
+  // Windows: moves playout to the current default speaker, which the plugin
+  // otherwise resolves only at start. False when no default could be found.
+  bool SelectDefaultPlayoutDevice();
 
   RTCPeerConnection* PeerConnectionForId(const std::string& id);
 
@@ -143,7 +150,10 @@ class FlutterWebRTCBase {
                         IceServer* ice_servers);
 
  protected:
+  void ReselectRecordingDevice();
   bool webrtc_initialized_ = false;
+  // A failed audio server probe is remembered briefly so repeated calls fail fast.
+  ProbeMemo audio_probe_memo_{std::chrono::seconds(5)};
   // Whether `enableWARP` was requested; peer connections created afterwards
   // default to DSCP marking. See EnsureWebRTCInitialized().
   bool warp_enabled_ = false;
@@ -152,7 +162,8 @@ class FlutterWebRTCBase {
   scoped_refptr<RTCPeerConnectionFactory> factory_;
   scoped_refptr<RTCAudioDevice> audio_device_;
   std::string playout_guid_;
-  int recording_index_ = -1;
+  int playout_index_ = -1;
+  std::string recording_guid_;
   scoped_refptr<RTCVideoDevice> video_device_;
   scoped_refptr<RTCDesktopDevice> desktop_device_;
   scoped_refptr<RTCAudioProcessing> audio_processing_;

@@ -2,6 +2,8 @@
 #define FLUTTER_WEBRTC_PLUGIN_FLUTTER_NOISE_SUPPRESSOR_H_
 
 #include <atomic>
+#include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 
@@ -40,6 +42,19 @@ class NoiseSuppressor {
     float clip_margin_db = 2.0f;
     // False behaves as a build without the model, for tests.
     bool allow_model = true;
+    // A frame of the model that takes longer than budget_us this many times
+    // in a row hands the call to rnnoise for overrun_retry_ms; a failed one
+    // or a failed load waits retry_ms. Each repeated overrun doubles the wait,
+    // and after max_overrun_retries the model stays off until capture restarts
+    // or Strongest is switched off and on.
+    int budget_us = 8000;
+    int overrun_frames = 30;
+    int retry_ms = 10000;
+    int overrun_retry_ms = 60000;
+    int max_overrun_retries = 3;
+    // Stands in for DeepFilter::Load, for tests.
+    std::function<std::unique_ptr<DeepFilter>(const DeepFilter::Params&)>
+        loader;
   };
 
   static NoiseSuppressor* Instance();
@@ -68,8 +83,14 @@ class NoiseSuppressor {
   // Set before ConfigureStrongest(true); for tests and tuning.
   void SetStrongestTuning(const StrongestTuning& tuning) { tuning_ = tuning; }
 
-  // Forget the network and resampler history, as when capture restarts.
-  void Restart() { was_active_ = false; }
+  // Forget the network and resampler history, as when capture restarts, and
+  // load a failed model again. Safe on the audio thread.
+  void Restart() {
+    was_active_ = false;
+    overruns_.store(0);
+    restart_requested_.store(true);
+    worker_.Wake();
+  }
 
   // Whether the last frame was actually denoised.
   bool Active() const { return active_.load(); }
@@ -90,10 +111,16 @@ class NoiseSuppressor {
   float ProcessChannel(Channel& channel, float* buffer, int num_frames,
                        DeepFilter* deep);
   float ProcessStrongest(Channel& channel, DeepFilter& deep, float* out);
+  enum class Retire { kSwitchedOff, kFailed, kOverrun };
+
   void UpdateModel();
-  void RetireModel(bool failed);
+  void RetireModel(Retire why);
+  int64_t RetryAtMs(Retire why);
+  void RequestSettle();
+  void Tick();
+  void RetryFailedLoad();
   void StartLoad();
-  void LoadModel(const DeepFilter::Params& params, bool allow_model);
+  void LoadModel(const StrongestTuning& tuning);
   void Settle();
 
   std::atomic<bool> enabled_{false};
@@ -108,6 +135,11 @@ class NoiseSuppressor {
   // True from the audio thread taking a model until the worker has settled it.
   std::atomic<bool> model_held_{false};
   std::atomic<bool> model_failed_{false};
+  // Steady-clock milliseconds after which a failed model is loaded again.
+  std::atomic<int64_t> retry_at_ms_{0};
+  std::atomic<bool> settle_requested_{false};
+  std::atomic<bool> restart_requested_{false};
+  std::atomic<int> overruns_{0};
   std::mutex load_mutex_;
   // Guarded by load_mutex_.
   bool loading_ = false;

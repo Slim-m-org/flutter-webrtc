@@ -15,8 +15,9 @@ extern "C" {
 void slimm_chain_initialize(int sample_rate_hz, int num_channels);
 
 // One 10 ms frame of mono samples on the int16 scale, in place, on the audio
-// thread. Any rate the chain supports (8 to 48 kHz).
-void slimm_chain_process(float* buffer, int num_frames);
+// thread. Any rate the chain supports (8 to 48 kHz). Returns 0 when the frame
+// is too long to process and was left untouched, 1 otherwise.
+int slimm_chain_process(float* buffer, int num_frames);
 
 // The same settings `setInputGate` takes on desktop.
 void slimm_chain_configure(int gate_enabled, float threshold_db, int dynamics,
@@ -34,6 +35,9 @@ int slimm_chain_strong_active(void);
 // Scratch memory for one frame, so the wasm host can copy samples in and out
 // without an allocator of its own; up to 4800 samples (10 ms at 480 kHz).
 float* slimm_chain_frame_buffer(void);
+
+// The longest frame slimm_chain_process accepts.
+int slimm_chain_max_frame_samples(void);
 
 #ifdef __cplusplus
 }

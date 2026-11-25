@@ -5,6 +5,9 @@ on:
   push:
     paths:
       - "common/cpp/**"
+      - "common/darwin/Classes/CaptureChainProcessing.*"
+      - "android/src/main/cpp/**"
+      - "ios/flutter_webrtc/Sources/flutter_webrtc/capture_chain/**"
       - "linux/**"
       - "windows/**"
       - "test/native/**"
@@ -15,6 +18,9 @@ on:
   pull_request:
     paths:
       - "common/cpp/**"
+      - "common/darwin/Classes/CaptureChainProcessing.*"
+      - "android/src/main/cpp/**"
+      - "ios/flutter_webrtc/Sources/flutter_webrtc/capture_chain/**"
       - "linux/**"
       - "windows/**"
       - "test/native/**"
@@ -59,6 +65,46 @@ jobs:
 
       - name: Test in a shuffled order
         run: build/native-tests/native_tests --strict --shuffle "$GITHUB_RUN_NUMBER"
+
+  sanitizers:
+    name: Native tests (${{ matrix.name }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: ASan and UBSan
+            flags: -fsanitize=address,undefined
+          - name: TSan
+            flags: -fsanitize=thread
+    env:
+      CC: clang
+      CXX: clang++
+      TSAN_OPTIONS: halt_on_error=1 second_deadlock_stack=1 suppressions=${{ github.workspace }}/test/native/tsan.supp
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1:suppressions=${{ github.workspace }}/test/native/ubsan.supp
+      LSAN_OPTIONS: suppressions=${{ github.workspace }}/test/native/lsan.supp
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install glib and a D-Bus daemon for the portal guard tests
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libglib2.0-dev dbus-daemon
+
+      - name: Configure
+        run: >
+          cmake -S test/native -B build/sanitized
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo -DNATIVE_TESTS_STRICT=ON
+          "-DCMAKE_C_FLAGS=${{ matrix.flags }} -fno-omit-frame-pointer"
+          "-DCMAKE_CXX_FLAGS=${{ matrix.flags }} -fno-omit-frame-pointer"
+          "-DCMAKE_EXE_LINKER_FLAGS=${{ matrix.flags }}"
+
+      - name: Build
+        run: cmake --build build/sanitized --parallel 4
+
+      - name: Test
+        run: ctest --test-dir build/sanitized --output-on-failure
 
   windows:
     name: Native tests (Windows)

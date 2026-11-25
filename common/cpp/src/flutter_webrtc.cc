@@ -44,7 +44,12 @@ void FlutterWebRTC::HandleMethodCall(
     // here rather than in the constructor.
     RememberInitializeOptions(findBoolean(options, "enableWARP"),
                               findBoolean(options, "zeroPlayoutDelay"));
-    EnsureWebRTCInitialized(requested_warp_, requested_zero_playout_delay_);
+    if (!EnsureWebRTCInitialized(requested_warp_,
+                                 requested_zero_playout_delay_)) {
+      result->Error("AudioServerUnavailable",
+                    "No audio server is running, so a call cannot start");
+      return;
+    }
     result->Success();
     return;
   }
@@ -164,6 +169,11 @@ void FlutterWebRTC::HandleMethodCall(
         GetValue<EncodableMap>(*method_call.arguments());
     const std::string deviceId = findString(params, "deviceId");
     SelectAudioOutput(deviceId, std::move(result));
+  } else if (method_call.method_name().compare("defaultAudioDevice") == 0) {
+    const EncodableMap params =
+        GetValue<EncodableMap>(*method_call.arguments());
+    GetDefaultAudioDevice(findString(params, "kind") == "audioinput",
+                          std::move(result));
   } else if (method_call.method_name().compare("mediaStreamGetTracks") == 0) {
     if (!method_call.arguments()) {
       result->Error("Bad Arguments", "Null constraints arguments received");

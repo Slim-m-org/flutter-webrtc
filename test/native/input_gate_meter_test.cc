@@ -2,6 +2,7 @@
 #define _USE_MATH_DEFINES
 #endif
 #include <cmath>
+#include <limits>
 #include <vector>
 
 #include "check.h"
@@ -69,4 +70,17 @@ TEST(meter_is_floored_when_nothing_was_processed) {
   InputGate& gate = *InputGate::Instance();
   gate.TakePeakDb();
   CHECK(gate.TakePeakDb() <= -100.0f);
+}
+
+TEST(gate_ignores_a_threshold_that_is_not_a_number) {
+  InputGate& gate = *InputGate::Instance();
+  const float bad[] = {std::nanf(""), std::numeric_limits<float>::infinity()};
+  for (float threshold : bad) {
+    gate.Configure(true, threshold);
+    gate.Initialize(48000, 1);
+    for (int i = 0; i < 20; ++i) Feed(gate, -20.0f);
+    CHECK(gate.VoiceDetected());
+  }
+  gate.Configure(false, kThresholdDb);
+  gate.Initialize(48000, 1);
 }

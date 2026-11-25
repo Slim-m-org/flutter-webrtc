@@ -18,12 +18,34 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
+#include <objbase.h>
 #include <windows.h>
 #endif
+
+#include "com_scope.h"
 
 namespace flutter_webrtc_plugin {
 
 namespace {
+
+#ifdef _WIN32
+// The loopback capture talks to the audio service through COM, and the worker
+// runs it off the platform thread, so the worker joins the multithreaded apartment.
+struct WorkerComApi {
+  static bool Enter() {
+    const HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    return SUCCEEDED(hr);
+  }
+  static void Leave() { CoUninitialize(); }
+};
+using WorkerComScope = ComScope<WorkerComApi>;
+#else
+struct NoComApi {
+  static bool Enter() { return false; }
+  static void Leave() {}
+};
+using WorkerComScope = ComScope<NoComApi>;
+#endif
 
 // Waits, for a bounded time, until `capturer` holds the only reference left,
 // so that the capturer is destroyed on the calling thread when this returns
@@ -135,9 +157,13 @@ FlutterScreenCapture::FlutterScreenCapture(FlutterWebRTCBase* base)
 
 FlutterScreenCapture::~FlutterScreenCapture() {
   closing_ = true;
+  alive_->store(false);
 
   // From here on libwebrtc callbacks no longer reach this object.
   observer_proxy_->Detach();
+
+  // A capture thread reports errors through this object, so it ends first.
+  loopback_.TakeAny().Stop();
 
   // Stop the capturers that are still running, so that their capture loops
   // end now. They are destroyed later, when the factory is released, and
@@ -188,6 +214,7 @@ void FlutterScreenCapture::PostToWorker(std::function<void()> task) {
 }
 
 void FlutterScreenCapture::WorkerLoop() {
+  WorkerComScope com;
   for (;;) {
     std::function<void()> task;
     {
@@ -219,7 +246,7 @@ void FlutterScreenCapture::PostResult(std::function<void()> reply) {
     return;
   }
   if (base_->task_runner_) {
-    base_->task_runner_->EnqueueTask(std::move(reply));
+    base_->task_runner_->EnqueueTask(RunWhileAlive(alive_, std::move(reply)));
   } else {
     reply();
   }
@@ -366,15 +393,20 @@ void FlutterScreenCapture::ResetDesktopSources(
     std::unique_ptr<MethodResultProxy> result) {
   // Dropping the cached lists makes the next enumeration open a fresh
   // capture session (on Linux/Wayland, a new xdg-desktop-portal prompt).
-  {
-    std::lock_guard<std::mutex> build_lock(build_mutex_);
-    medialist_.clear();
-    std::lock_guard<std::mutex> lock(sources_mutex_);
-    sources_.clear();
-  }
-  auto map = EncodableMap();
-  map[EncodableValue("result")] = true;
-  result->Success(EncodableValue(map));
+  std::shared_ptr<MethodResultProxy> shared_result(std::move(result));
+  PostToWorker([this, shared_result]() {
+    {
+      std::lock_guard<std::mutex> build_lock(build_mutex_);
+      medialist_.clear();
+      std::lock_guard<std::mutex> lock(sources_mutex_);
+      sources_.clear();
+    }
+    auto map = EncodableMap();
+    map[EncodableValue("result")] = true;
+    PostResult([shared_result, map]() {
+      shared_result->Success(EncodableValue(map));
+    });
+  });
 }
 
 void FlutterScreenCapture::UpdateDesktopSources(
@@ -476,6 +508,14 @@ void FlutterScreenCapture::OnStop(scoped_refptr<RTCDesktopCapturer> capturer) {
       ReleaseOnCurrentThread(std::move(retired));
     });
   }
+}
+
+void FlutterScreenCapture::OnLoopbackError(const std::string& source_id) {
+  // Tells Dart the share's system audio stopped while its video goes on.
+  EncodableMap info;
+  info[EncodableValue("event")] = "loopbackError";
+  info[EncodableValue("id")] = EncodableValue(source_id);
+  base_->event_channel()->Success(EncodableValue(info));
 }
 
 void FlutterScreenCapture::OnError(scoped_refptr<RTCDesktopCapturer> capturer) {
@@ -623,66 +663,48 @@ void FlutterScreenCapture::GetDisplayMedia(
     }
   }
 
-  if (capture_audio) {
-    // Stop any previous loopback session before starting a new one.
-    loopback_.TakeAny().Stop();
+  // A loopback that fails to start leaves the share without audio. It is
+  // handed over with the track that carries it.
+  using AudioStart = std::pair<std::shared_ptr<Loopback>,
+                               scoped_refptr<RTCAudioTrack>>;
+  std::shared_ptr<MethodResultProxy> shared_result(std::move(result));
+  const EncodableMap constraints_copy = constraints;
 
-    // Disable all audio processing for loopback capture.  Echo cancellation,
-    // AGC, and noise suppression are designed for microphone input; applied to
-    // system audio they treat the captured content as echo/noise and destroy it.
-    RTCAudioOptions loopback_opts;
-    loopback_opts.echo_cancellation = false;
-    loopback_opts.auto_gain_control = false;
-    loopback_opts.noise_suppression = false;
-    const std::string loopback_source_label =
-      "screen_loopback_input_" + base_->GenerateUUID();
-    scoped_refptr<RTCAudioSource> loopback_source =
-        base_->factory_->CreateAudioSource(
-            loopback_source_label.c_str(), RTCAudioSource::SourceType::kCustom,
-            loopback_opts);
-
-    std::string audio_uuid = base_->GenerateUUID();
-    scoped_refptr<RTCAudioTrack> audio_track =
-        base_->factory_->CreateAudioTrack(loopback_source, audio_uuid.c_str());
-
-    Loopback loopback;
-    loopback.capturer = CreateLoopbackCapturer(source_id);
-
-    if (loopback.capturer && loopback.capturer->Start(loopback_source)) {
-      loopback.source = loopback_source;
-      loopback.owner = desktop_capturer.get();
-      loopback_.Replace(std::move(loopback)).Stop();
-
+  auto finish = [this, shared_result, stream, params, uuid, desktop_capturer,
+                 constraints_copy, fps, size_limit](AudioStart audio) mutable {
+    if (audio.first) {
       EncodableMap audio_info;
       audio_info[EncodableValue("id")] =
-          EncodableValue(audio_track->id().std_string());
+          EncodableValue(audio.second->id().std_string());
       audio_info[EncodableValue("label")] =
-          EncodableValue(audio_track->id().std_string());
+          EncodableValue(audio.second->id().std_string());
       audio_info[EncodableValue("kind")] =
-          EncodableValue(audio_track->kind().std_string());
+          EncodableValue(audio.second->kind().std_string());
       audio_info[EncodableValue("enabled")] =
-          EncodableValue(audio_track->enabled());
+          EncodableValue(audio.second->enabled());
 
       EncodableList audioTracks;
       audioTracks.push_back(EncodableValue(audio_info));
       params[EncodableValue("audioTracks")] = EncodableValue(audioTracks);
 
-      stream->AddTrack(audio_track);
-      base_->local_tracks_[audio_track->id().std_string()] = audio_track;
+      audio.first->owner = desktop_capturer.get();
+      auto replaced = std::make_shared<Loopback>(
+          loopback_.Replace(std::move(*audio.first)));
+      PostToWorker([replaced]() { replaced->Stop(); });
+
+      stream->AddTrack(audio.second);
+      base_->local_tracks_[audio.second->id().std_string()] = audio.second;
     } else {
-      // Loopback init failed or not supported — continue without audio.
       params[EncodableValue("audioTracks")] = EncodableValue(EncodableList());
     }
-  } else {
-    params[EncodableValue("audioTracks")] = EncodableValue(EncodableList());
-  }
 
   // VIDEO
 
   EncodableMap video_constraints;
-  auto it = constraints.find(EncodableValue("video"));
-  if (it != constraints.end() && TypeIs<EncodableMap>(it->second)) {
-    video_constraints = GetValue<EncodableMap>(it->second);
+  auto video_it = constraints_copy.find(EncodableValue("video"));
+  if (video_it != constraints_copy.end() &&
+      TypeIs<EncodableMap>(video_it->second)) {
+    video_constraints = GetValue<EncodableMap>(video_it->second);
   }
 
   desktop_capturer->RegisterDesktopCapturerObserver(observer_proxy_);
@@ -732,7 +754,51 @@ void FlutterScreenCapture::GetDisplayMedia(
 
   desktop_capturer->Start(uint32_t(fps));
 
-  result->Success(EncodableValue(params));
+  shared_result->Success(EncodableValue(params));
+  };
+
+  if (!capture_audio) {
+    finish({});
+    return;
+  }
+
+  // Disable all audio processing for loopback capture.  Echo cancellation,
+  // AGC, and noise suppression are designed for microphone input; applied to
+  // system audio they treat the captured content as echo/noise and destroy it.
+  RTCAudioOptions loopback_opts;
+  loopback_opts.echo_cancellation = false;
+  loopback_opts.auto_gain_control = false;
+  loopback_opts.noise_suppression = false;
+  const std::string loopback_source_label =
+      "screen_loopback_input_" + base_->GenerateUUID();
+  scoped_refptr<RTCAudioSource> loopback_source =
+      base_->factory_->CreateAudioSource(loopback_source_label.c_str(),
+                                         RTCAudioSource::SourceType::kCustom,
+                                         loopback_opts);
+
+  const std::string audio_uuid = base_->GenerateUUID();
+  scoped_refptr<RTCAudioTrack> audio_track =
+      base_->factory_->CreateAudioTrack(loopback_source, audio_uuid.c_str());
+
+  // Starting the capture waits on the audio service, so it runs on the
+  // worker and the platform thread answers once it is done.
+  PostToWorker([this, source_id, loopback_source, audio_track,
+                start_finish = std::move(finish)]() mutable {
+    loopback_.TakeAny().Stop();
+    auto loopback = std::make_shared<Loopback>();
+    loopback->capturer = CreateLoopbackCapturer(source_id);
+    if (loopback->capturer) {
+      loopback->capturer->SetOnError(
+          [this, source_id]() { OnLoopbackError(source_id); });
+    }
+    loopback->source = loopback_source;
+    const bool started =
+        loopback->capturer && loopback->capturer->Start(loopback_source);
+    PostResult([reply_finish = std::move(start_finish), loopback, audio_track,
+                started]() mutable {
+      reply_finish(started ? AudioStart{loopback, audio_track} : AudioStart{});
+    });
+  });
 }
 
 }  // namespace flutter_webrtc_plugin

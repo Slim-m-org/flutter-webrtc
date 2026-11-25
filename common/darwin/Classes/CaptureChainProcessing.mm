@@ -1,16 +1,18 @@
 #import "CaptureChainProcessing.h"
 
 #include "flutter_capture_chain_api.h"
+#include "flutter_chain_glue.h"
 
 @implementation CaptureChainProcessing
 
 - (void)audioProcessingInitializeWithSampleRate:(size_t)sampleRateHz channels:(size_t)channels {
-  slimm_chain_initialize((int)sampleRateHz, (int)channels);
+  slimm_chain_initialize(flutter_webrtc_plugin::ClampToInt(sampleRateHz),
+                         flutter_webrtc_plugin::ClampToInt(channels));
 }
 
 // The first channel is libwebrtc's own buffer, so the chain edits what is sent in place.
 - (void)audioProcessingProcess:(RTC_OBJC_TYPE(RTCAudioBuffer) *)audioBuffer {
-  if (audioBuffer.channels == 0 || audioBuffer.frames == 0) return;
+  if (!flutter_webrtc_plugin::AudioBufferUsable(audioBuffer.channels, audioBuffer.frames)) return;
   slimm_chain_process([audioBuffer rawBufferForChannel:0], (int)audioBuffer.frames);
 }
 
@@ -20,7 +22,7 @@
 + (void)configure:(NSDictionary*)args {
   NSNumber* threshold = args[@"thresholdDb"];
   slimm_chain_configure([args[@"enabled"] boolValue],
-                        threshold != nil ? [threshold floatValue] : -50.0f,
+                        flutter_webrtc_plugin::GateThresholdOrDefault(threshold != nil, [threshold floatValue]),
                         [args[@"dynamics"] boolValue],
                         [args[@"levelAfterSuppression"] boolValue],
                         [args[@"strongNoiseSuppression"] boolValue]);

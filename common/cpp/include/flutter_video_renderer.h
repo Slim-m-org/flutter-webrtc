@@ -6,9 +6,11 @@
 
 #include "rtc_video_frame.h"
 #include "rtc_video_renderer.h"
+#include "trailing_throttle.h"
 
 #include <atomic>
 #include <chrono>
+#include <memory>
 #include <mutex>
 
 namespace flutter_webrtc_plugin {
@@ -41,8 +43,8 @@ class FlutterVideoRenderer
 
   bool CheckVideoTrack(std::string mediaId);
 
-  // Frames closer together than this are dropped before conversion; zero
-  // keeps every frame.
+  // Frames closer together than this are published to the engine once per
+  // interval, the newest one last; zero publishes every frame.
   void SetMinFrameInterval(std::chrono::microseconds interval);
 
   std::string media_stream_id;
@@ -54,10 +56,6 @@ class FlutterVideoRenderer
   };
   FrameSize last_frame_size_ = {0, 0};
   bool first_frame_rendered = false;
-  // Set from the platform thread while frames are arriving.
-  std::atomic<std::chrono::microseconds> min_frame_interval_{
-      std::chrono::microseconds(0)};
-  std::chrono::steady_clock::time_point last_accepted_{};
   TextureRegistrar* registrar_ = nullptr;
   std::unique_ptr<EventChannelProxy> event_channel_;
   int64_t texture_id_ = -1;
@@ -72,6 +70,8 @@ class FlutterVideoRenderer
   // Serializes conversions, which own `rgb_buffer_`.
   mutable std::mutex convert_mutex_;
   RTCVideoFrame::VideoRotation rotation_ = RTCVideoFrame::kVideoRotation_0;
+  // Last member: it is destroyed first, so no publish outlives the fields above.
+  std::unique_ptr<TrailingThrottle> throttle_;
 };
 
 enum class SetSrcObjectStatus { kOk, kUnknownTexture, kTrackNotFound };

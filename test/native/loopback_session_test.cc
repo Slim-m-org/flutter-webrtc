@@ -148,4 +148,40 @@ TEST(LoopbackSession_RestartsAgainstStopsStopEachLoopbackOnce) {
   CHECK(overlapping == 0);
 }
 
+// A capturer that breaks, as the platform audio session does.
+class BreakingCapturer : public LoopbackCapturer {
+ public:
+  bool Start(libwebrtc::scoped_refptr<libwebrtc::RTCAudioSource>) override {
+    return true;
+  }
+  void Stop() override {}
+  void Break() { ReportError(); }
+};
+
+TEST(LoopbackCapturer_ReportsABrokenSessionOnceToItsCallback) {
+  BreakingCapturer capturer;
+  int errors = 0;
+  capturer.SetOnError([&] { ++errors; });
+  capturer.Break();
+  capturer.Break();
+  CHECK(errors == 1);
+}
+
+TEST(LoopbackCapturer_ABrokenSessionWithoutACallbackIsHarmless) {
+  BreakingCapturer capturer;
+  capturer.Break();
+}
+
+// The capture thread reports while the platform thread swaps the callback.
+TEST(LoopbackCapturer_ReportsFromACaptureThreadWhileTheCallbackChanges) {
+  for (int round = 0; round < 200; ++round) {
+    BreakingCapturer capturer;
+    std::atomic<int> errors{0};
+    std::thread reporter([&] { capturer.Break(); });
+    capturer.SetOnError([&] { ++errors; });
+    reporter.join();
+    CHECK(errors <= 1);
+  }
+}
+
 }  // namespace
